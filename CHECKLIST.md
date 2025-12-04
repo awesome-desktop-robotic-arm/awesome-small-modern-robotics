@@ -10,7 +10,7 @@ I’ll use `[ ]` checkboxes so you can literally copy-paste this into your READM
 
 ### 0.1. Repository layout
 
-**[ ]** Create repo and base structure:
+**[x]** Create repo and base structure:
 
 ```text
 robotics_lib/
@@ -33,7 +33,7 @@ robotics_lib/
 
 **Checklist:**
 
-* [ ] `robotics_lib/__init__.py` created
+* [x] `robotics_lib/__init__.py` created
 
   * [ ] Expose top-level symbols you want (optionally) e.g. `from .models import planar_2link`
 * [ ] `tests/` package created with `__init__.py`

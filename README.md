@@ -7,7 +7,7 @@ A utility collection for robotics development
 ## Modules
 
 - Kinematics
-- Dynamics
+- Dynamics -> will borrow nre from mujoco for ID
 - Utils
 
 ## Use

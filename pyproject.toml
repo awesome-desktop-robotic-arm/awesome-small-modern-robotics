@@ -4,4 +4,7 @@ version = "0.1.0"
 description = "A Small Modern Robotics Lib"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "mujoco>=3.3.7",
+    "numpy>=2.3.5",
+]
