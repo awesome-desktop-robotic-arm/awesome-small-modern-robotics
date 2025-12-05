@@ -29,51 +29,71 @@ def _parse_mjcf(filepath: str) -> Robot:
     def parse_body(xml_element: ET.Element, parent_name: str):
         body_name = xml_element.get('name', f"body_{len(links)}")
         
-        # --- Parse Joint (The connection to the parent) ---
-        # Note: MJCF bodies can have multiple joints (composite joints), 
-        # but let's assume single DOF per body for simplicity first.
-        joint_elem = xml_element.find('joint') 
+        # --- 1. Parse Body Transform (Link Origin) ---
+        # "pos" and "quat" on <body> define the frame relative to parent
+        body_pos = _parse_vec(xml_element.get('pos', '0 0 0'))
+        body_quat = _parse_vec(xml_element.get('quat', '1 0 0 0'))
         
+        T_link = np.eye(4)
+        T_link[:3, :3] = quat_to_mat(body_quat)
+        T_link[:3, 3] = body_pos
+
+        # --- 2. Parse Inertial Properties ---
+        inertial_elem = xml_element.find('inertial')
+        if inertial_elem is not None:
+            # Parse explicitly
+            mass = float(inertial_elem.get('mass', '0.0'))
+            inertia_data = _parse_mjcf_inertial(inertial_elem)
+            com = inertia_data['com']
+            inertia_mat = inertia_data['inertia']
+        else:
+            # Default / Dummy values for bodies without mass (e.g. worldbody or dummy frames)
+            mass = 0.0
+            com = np.zeros(3)
+            inertia_mat = np.zeros((3, 3))
+
+        # --- 3. Create Link ---
+        new_link = Link(
+            name=body_name, 
+            mass=mass, 
+            com=com, 
+            inertia=inertia_mat,
+            origin=T_link
+        )
+        links.append(new_link)
+
+        # --- 4. Parse Joint (Connection to Parent) ---
+        # Note: In MJCF, joint is defined INSIDE the child body, 
+        # specifying the DOF between this body and its parent.
+        joint_elem = xml_element.find('joint') 
         if joint_elem is not None:
             j_name = joint_elem.get('name', f"joint_{len(joints)}")
-            j_type = joint_elem.get('type', 'hinge') # 'hinge' is MJCF for revolute
+            j_type = joint_elem.get('type', 'hinge') 
             j_axis = _parse_vec(joint_elem.get('axis', '0 0 1'))
 
-            # Origin transform
-            pos = _parse_vec(joint_elem.get('pos', '0 0 0'))
-            T_origin = np.eye(4)
-            T_origin[:3, 3] = pos
+            # Joint position is relative to the BODY frame
+            j_pos = _parse_vec(joint_elem.get('pos', '0 0 0'))
             
-            # Create your internal Joint object
+            T_joint_origin = np.eye(4)
+            T_joint_origin[:3, 3] = j_pos
+            
             new_joint = Joint(
                 name=j_name,
                 parent_link=parent_name,
                 child_link=body_name,
                 type=j_type,
                 axis=j_axis,
-                origin=T_origin
+                origin=T_joint_origin
             )
             joints.append(new_joint)
-        else:
-            # Logic for fixed joint if needed, or just merge bodies
-            pass
 
-        # --- Parse Inertial/Geom ---
-        # Using explicit <inertial> tag if present
-        inertial_elem = xml_element.find('inertial')
-        if  inertial_elem is not None:
-            mass = float(inertial_elem.get('mass'))
-            inertia_data = _parse_mjcf_inertial(inertial_elem)
-            new_link = Link(name=body_name, mass=mass, com=inertia_data['com'], inertia=inertia_data['inertia'])
-            links.append(new_link)
-
-        # --- Recurse to Children ---
+        # --- 5. Recurse to Children ---
         for child_body in xml_element.findall('body'):
             parse_body(child_body, parent_name=body_name)
 
     # 3. Start the recursion
     # Worldbody is the "base" (Link 0)
-    links.append(Link(name="world", mass=0, com=np.zeros(3), inertia=np.zeros((3,3))))
+    links.append(Link(name="world", mass=0, com=np.zeros(3), inertia=np.zeros((3,3)), origin=np.eye(4)))
     
     for child in worldbody.findall('body'):
         parse_body(child, parent_name="world")
