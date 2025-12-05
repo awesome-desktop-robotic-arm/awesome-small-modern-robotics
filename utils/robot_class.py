@@ -13,6 +13,7 @@ class Link:
     mass: float
     com: np.ndarray # Center of Mass (3-vector)
     inertia: np.ndarray # 3x3 inertia matrix
+    # TODO: This needs parent transformation to build kinematics -> also modify model loader
 
 @dataclass
 class Joint:

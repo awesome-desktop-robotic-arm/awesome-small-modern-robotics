@@ -1,3 +1,7 @@
+"""
+Geometrical utility functions.
+"""
+
 import numpy as np
 
 
@@ -22,3 +26,15 @@ def quat_to_mat(q: list) -> np.ndarray:
     return R
 
 
+def make_T(R: np.ndarray, p: np.ndarray) -> np.ndarray:
+    """
+    Assembling R and p into a homogeneous transformation matrix T.
+
+    :param R: A 3x3 rotation matrix. SO(3)
+    :param p: A 3-vector representing translation.
+    :return: A 4x4 homogeneous transformation matrix. SE(3)
+    """
+    T = np.eye(4)
+    T[:3, :3] = R
+    T[:3, 3] = p
+    return T

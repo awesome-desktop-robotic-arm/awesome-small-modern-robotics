@@ -38,7 +38,11 @@ def _parse_mjcf(filepath: str) -> Robot:
             j_name = joint_elem.get('name', f"joint_{len(joints)}")
             j_type = joint_elem.get('type', 'hinge') # 'hinge' is MJCF for revolute
             j_axis = _parse_vec(joint_elem.get('axis', '0 0 1'))
-            j_origin = _parse_vec(joint_elem.get('pos', '0 0 0'))
+
+            # Origin transform
+            pos = _parse_vec(joint_elem.get('pos', '0 0 0'))
+            T_origin = np.eye(4)
+            T_origin[:3, 3] = pos
             
             # Create your internal Joint object
             new_joint = Joint(
@@ -47,7 +51,7 @@ def _parse_mjcf(filepath: str) -> Robot:
                 child_link=body_name,
                 type=j_type,
                 axis=j_axis,
-                origin=j_origin
+                origin=T_origin
             )
             joints.append(new_joint)
         else:
@@ -130,6 +134,14 @@ def load_robot(filepath: str) -> Robot:
 if __name__ == "__main__":
     # Simple test
     robot = load_robot("mujoco_menagerie/arx_l5/arx_l5.xml")
+    # robot = load_robot("mujoco_menagerie/franka_fr3/fr3.xml")
     print(f"Loaded robot: {robot.name}")
     print(f"Number of links: {len(robot.links)}")
     print(f"Number of joints: {len(robot.joints)}")
+
+
+    for link in robot.links:
+        print(f"Link: {link.name}, Mass: {link.mass}, Inertia:\n{link.inertia}")
+
+    for joint in robot.joints:
+        print(f"Joint: {joint.name}, Type: {joint.type}, Parent: {joint.parent_link}, Child: {joint.child_link}")   
