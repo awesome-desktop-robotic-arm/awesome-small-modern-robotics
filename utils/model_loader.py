@@ -16,6 +16,11 @@ class MJCFParser:
         """Parse an MJCF file and return a Robot object."""
         tree = ET.parse(filepath)
         root = tree.getroot()
+
+        compiler = root.find('compiler')
+        self.angle_convention = 'degree' # Default
+        if compiler is not None:
+            self.angle_convention = compiler.get('angle', 'degree')
         
         robot_name = root.get('model', 'robot')
         
@@ -45,7 +50,7 @@ class MJCFParser:
             R = quat_to_mat(body_quat)
         elif 'euler' in xml_element.attrib:
             body_euler = self._parse_vec(xml_element.get('euler', '0 0 0'))
-            R = euler_to_mat(body_euler)
+            R = euler_to_mat(body_euler, self.angle_convention)
         else:
             R = np.eye(3)
         

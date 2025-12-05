@@ -11,6 +11,11 @@ def quat_to_mat(q: list) -> np.ndarray:
     :param q: A numpy array or list with 4 elements representing a unit quaternion [w, x, y, z] (mjcf convention)
     :return: A 3x3 numpy array representing the rotation matrix.
     """
+    # Handle non-unit quaternions
+    q = np.array(q)
+    if np.linalg.norm(q) > 1e-6:
+        q = q / np.linalg.norm(q)
+
     w, x, y, z = q[0], q[1], q[2], q[3]
 
     R = np.array([
@@ -34,13 +39,20 @@ def make_T(R: np.ndarray, p: np.ndarray) -> np.ndarray:
     T[:3, 3] = p
     return T
 
-def euler_to_mat(euler: np.ndarray) -> np.ndarray:
+def euler_to_mat(euler: np.ndarray, convention: str = 'radians') -> np.ndarray:
     """
     Converts euler angles (xyz convention) to rotation matrix.
     
     :param euler: A numpy array or list with 3 elements [r, p, y]
+    :param convention: 'radians' or 'degrees'
     :return: A 3x3 numpy array representing the rotation matrix.
     """
+    if convention not in ['radians', 'degrees']:
+        raise ValueError("Convention must be 'radians' or 'degrees'")
+
+    if convention == 'degrees':
+        euler = np.deg2rad(euler)
+    
     ai, aj, ak = euler[0], euler[1], euler[2]
     si, sj, sk = np.sin(ai), np.sin(aj), np.sin(ak)
     ci, cj, ck = np.cos(ai), np.cos(aj), np.cos(ak)
