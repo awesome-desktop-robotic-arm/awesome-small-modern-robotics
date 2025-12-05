@@ -14,6 +14,7 @@ class Link:
     com: np.ndarray # Center of Mass (3-vector)
     inertia: np.ndarray # 3x3 inertia matrix
     origin: np.ndarray # 4x4 transformation matrix
+    parent_link: Optional[str] = None
 
     def __post_init__(self):
         """post init to check data validity"""

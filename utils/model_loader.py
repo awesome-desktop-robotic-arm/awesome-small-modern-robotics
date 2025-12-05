@@ -3,8 +3,7 @@ import numpy as np
 from pathlib import Path
 
 from robot_class import Robot, Link, Joint
-from geometry import quat_to_mat, make_T
-
+from geometry import quat_to_mat, make_T, euler_to_mat
 
 class MJCFParser:
     """Parser for MuJoCo MJCF XML files."""
@@ -17,34 +16,40 @@ class MJCFParser:
         """Parse an MJCF file and return a Robot object."""
         tree = ET.parse(filepath)
         root = tree.getroot()
-        worldbody = root.find('worldbody')
         
-        # handle empty worldbody
+        robot_name = root.get('model', 'robot')
+        
+        worldbody = root.find('worldbody')
         if worldbody is None:
             raise ValueError("No worldbody found in MJCF file.")
 
         # Add worldbody as a link
-        self.links.append(Link(name="world", mass=0, com=np.zeros(3), inertia=np.zeros((3,3)), origin=np.eye(4)))
+        self.links.append(Link(name="world", mass=0.0, com=np.zeros(3), inertia=np.zeros((3,3)), origin=np.eye(4)))
         
         # Recursive call to parse children
         for child in worldbody.findall('body'):
             self._parse_body(child, parent_name="world")
 
         # Construct robot
-        robot = Robot(name=root.get('model', 'robot'), links=self.links, joints=self.joints)
-
-        return robot
+        return Robot(name=robot_name, links=self.links, joints=self.joints)
         
     def _parse_body(self, xml_element: ET.Element, parent_name: str):
         """Recursively parse a <body> element and its children."""
         body_name = xml_element.get('name', f"body_{len(self.links)}")
         
         # --- 1. Parse Body Transform (Link Origin) ---
-        # "pos" and "quat" on <body> define the frame relative to parent
         body_pos = self._parse_vec(xml_element.get('pos', '0 0 0'))
-        body_quat = self._parse_vec(xml_element.get('quat', '1 0 0 0'))
         
-        T_link = make_T(quat_to_mat(body_quat), body_pos)
+        if 'quat' in xml_element.attrib:
+            body_quat = self._parse_vec(xml_element.get('quat', '1 0 0 0'))
+            R = quat_to_mat(body_quat)
+        elif 'euler' in xml_element.attrib:
+            body_euler = self._parse_vec(xml_element.get('euler', '0 0 0'))
+            R = euler_to_mat(body_euler)
+        else:
+            R = np.eye(3)
+        
+        T_link = make_T(R, body_pos)
 
         # --- 2. Parse Inertial Properties ---
         inertial_elem = xml_element.find('inertial')
@@ -67,16 +72,14 @@ class MJCFParser:
             mass=mass, 
             com=com, 
             inertia=inertia_mat,
-            origin=T_link
+            origin=T_link,
+            parent_link=parent_name
         )
         self.links.append(new_link)
 
-        # --- 4. Parse Joint (Connection to Parent) ---
-        # In MJCF, joint is defined INSIDE the child body, 
-        # specifying the DOF between this body and its parent.
-        # TODO: Handle multiple joints per body if needed.
-        joint_elem = xml_element.find('joint') 
-        if joint_elem is not None:
+        # --- 4. Parse Joints (Connection to Parent) ---
+        # Potentially multiple joints per body
+        for joint_elem in xml_element.findall('joint'):
             j_name = joint_elem.get('name', f"joint_{len(self.joints)}")
             j_type = joint_elem.get('type', 'hinge') 
             j_axis = self._parse_vec(joint_elem.get('axis', '0 0 1'))
@@ -104,7 +107,6 @@ class MJCFParser:
     def _parse_vec(self, string_vals):
         """Helper to turn "1 0 0" into np.array([1, 0, 0])"""
         return np.fromstring(string_vals, sep=' ')
-
 
     def _parse_mjcf_inertial(self, inertial_xml: ET.Element):
         """
@@ -138,12 +140,10 @@ class MJCFParser:
             'com': com,         # The 'pos' attribute
             'inertia': I_body   # The full 3x3 matrix
         }
-    
 
 def load_robot(filepath: str) -> Robot:
     """Factory function to load a robot from a file."""
-    ext = Path(filepath).suffix
-    ext = ext.lower()
+    ext = Path(filepath).suffix.lower()
     
     if ext == '.xml':
         # Assume MJCF for .xml files
@@ -156,18 +156,16 @@ def load_robot(filepath: str) -> Robot:
     else:
         raise ValueError(f"Unknown robot description format: {ext}")
 
-
 if __name__ == "__main__":
     # Simple test
-    robot = load_robot("mujoco_menagerie/arx_l5/arx_l5.xml")
-    # robot = load_robot("mujoco_menagerie/franka_fr3/fr3.xml")
+    # robot = load_robot("mujoco_menagerie/arx_l5/arx_l5.xml")
+    robot = load_robot("mujoco_menagerie/franka_fr3/fr3.xml")
     print(f"Loaded robot: {robot.name}")
     print(f"Number of links: {len(robot.links)}")
     print(f"Number of joints: {len(robot.joints)}")
 
-
     for link in robot.links:
-        print(f"Link: {link.name}, Mass: {link.mass}, Inertia:\n{link.inertia}")
+        print(f"Link: {link.name}, Mass: {link.mass}")
 
     for joint in robot.joints:
-        print(f"Joint: {joint.name}, Type: {joint.type}, Parent: {joint.parent_link}, Child: {joint.child_link}")   
+        print(f"Joint: {joint.name}, Type: {joint.type}, Parent: {joint.parent_link}, Child: {joint.child_link}")
