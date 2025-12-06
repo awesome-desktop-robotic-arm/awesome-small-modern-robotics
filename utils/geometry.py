@@ -41,28 +41,66 @@ def make_T(R: np.ndarray, p: np.ndarray) -> np.ndarray:
 
 def euler_to_mat(euler: np.ndarray, convention: str = 'radians') -> np.ndarray:
     """
-    Converts euler angles (xyz convention) to rotation matrix.
-    
-    :param euler: A numpy array or list with 3 elements [r, p, y]
+    Converts RPY Euler angles [roll, pitch, yaw] to a rotation matrix.
+
+    Composition: R = Rz(yaw) @ Ry(pitch) @ Rx(roll)
+
+    :param euler: A numpy array or list with 3 elements [roll, pitch, yaw]
     :param convention: 'radians' or 'degrees'
     :return: A 3x3 numpy array representing the rotation matrix.
     """
     if convention not in ['radians', 'degrees']:
         raise ValueError("Convention must be 'radians' or 'degrees'")
 
+    euler = np.asarray(euler, dtype=float)
+
     if convention == 'degrees':
         euler = np.deg2rad(euler)
-    
-    ai, aj, ak = euler[0], euler[1], euler[2]
-    si, sj, sk = np.sin(ai), np.sin(aj), np.sin(ak)
-    ci, cj, ck = np.cos(ai), np.cos(aj), np.cos(ak)
-    
-    cc, cs = ci*ck, ci*sk
-    sc, ss = si*ck, si*sk
+
+    r, p, y = euler  # roll, pitch, yaw
+
+    sr, cr = np.sin(r), np.cos(r)
+    sp, cp = np.sin(p), np.cos(p)
+    sy, cy = np.sin(y), np.cos(y)
 
     R = np.array([
-        [cj*ck, cj*sk, -sj],
-        [sj*sc - cs, sj*ss + cc, cj*si],
-        [sj*cc + ss, sj*cs - sc, cj*ci]
+        [cy*cp,   cy*sp*sr - sy*cr,  cy*sp*cr + sy*sr],
+        [sy*cp,   sy*sp*sr + cy*cr,  sy*sp*cr - cy*sr],
+        [-sp,     cp*sr,             cp*cr           ]
     ])
+
+    return R
+
+
+def axis_angle_to_mat(axis: np.ndarray, angle: float, convention: str = 'radians') -> np.ndarray:
+    """
+    Converts an axis-angle representation to a rotation matrix.
+
+    :param axis: A 3-vector representing the rotation axis (should be a unit vector).
+    :param angle: The rotation angle.
+    :param convention: 'radians' or 'degrees'
+    :return: A 3x3 rotation matrix.
+    """
+
+    if convention not in ['radians', 'degrees']:
+        raise ValueError("Convention must be 'radians' or 'degrees'")
+
+    if convention == 'degrees':
+        angle = np.deg2rad(angle)
+
+    # Normalize axis
+    axis = axis / np.linalg.norm(axis)
+    x, y, z = axis # Unpack
+    c = np.cos(angle)
+    s = np.sin(angle)
+    C = 1 - c
+
+    # Rodrigues' rotation formula
+    K = np.array([
+        [0, -z, y],
+        [z, 0, -x],
+        [-y, x, 0]  
+    ])
+
+    R = np.eye(3) + s * K + C * (K @ K)
     return R
