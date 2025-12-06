@@ -1,13 +1,15 @@
 """
 Kinematics module: 
 Forward kinematics: walk down kinematics tree
+Inverse kinematics: damped least squares
 """
 
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from utils.geometry import axis_angle_to_mat, make_T
 from utils.robot_class import Robot, Link, Joint
+from utils.util import timer
 
 class Kinematics:
     def __init__(self, robot: Robot):
@@ -88,3 +90,175 @@ class Kinematics:
             
             # Recurse
             self._fk_recursive(child, T_child_world, joint_angles, result)
+
+    @timer
+    def get_jacobian(self, link_name: str, joint_angles: Optional[List[float]] = None) -> np.ndarray:
+        """
+        Compute Geometric Jacobian for a specific link at a specific joint configuration.
+        Convention:
+            - World frame
+            - Output: 6xN matrix ([v; w] if complying with twist syntax, but standard is often [v; w] or [w; v]).
+            - Standard geometric Jacobian J = [J_linear; J_angular] (6xN).
+            - J_linear = z x (p_e - p_i)
+            - J_angular = z
+        """
+        # 1. Resolve joint angles
+        if joint_angles is None:
+            if self.robot.joint_states is None:
+                raise ValueError("Joint angles not provided and no current configuration set in robot.")
+            joint_angles = self.robot.joint_states
+            
+        if len(joint_angles) != len(self.robot.joints):
+            raise ValueError(f"Number of joint angles ({len(joint_angles)}) must match number of joints ({len(self.robot.joints)})")
+
+        # 2. Find link and build chain from root
+        target_link = next((l for l in self.robot.links if l.name == link_name), None)
+        # Check root as well if it's treated separately in links list (usually root is in links? Robot class def link: List[Link])
+        if target_link is None:
+            if self.robot.root.name == link_name:
+                target_link = self.robot.root
+            else:
+                raise ValueError(f"Link {link_name} not found in robot.")
+        
+        chain: List[Link] = []
+        curr = target_link
+        while curr is not None:
+            chain.append(curr)
+            curr = curr.parent
+        chain.reverse() # [root, ..., target]
+        
+        # 3. Forward pass to compute joint axes and end-effector position
+        # We need to traverse the chain and accumulate transforms
+        
+        T_cum = self.robot.root.origin.copy() # Start at root origin
+        
+        # Store joint info: (index, z_axis_world, p_origin_world, type)
+        joint_info: List[Tuple[int, np.ndarray, np.ndarray, str]] = []
+        
+        # Helper map for joint index
+        joint_to_idx = {j.name: i for i, j in enumerate(self.robot.joints)}
+
+        # Iterate through chain
+        # Note: chain[0] is root. joints are in children connecting parent->child.
+        # So we iterate from the first child (chain[1:])
+        
+        # Root has no incoming joints in this structure usually.
+        # If root had joints, they would be in root.joints. 
+        # But root.parent is None, so logic holds.
+        
+        # However, we need to process the whole chain. 
+        # If the target is root, Jacobian is zero (if root is fixed).
+        
+        # Special case: Jacobian of Root. 
+        if target_link == self.robot.root:
+            return np.zeros((6, len(self.robot.joints)))
+
+        # Re-verify FK logic for T_cum
+        # In FK: T_child_world = T_current_world @ T_child_static @ T_joint_total
+        # We need to replicate this per link.
+        
+        # Current Logic:
+        # T_prev is transf of parent link.
+        # We step into child:
+        # T_pre_joint = T_prev @ child.origin (static)
+        # Then apply joints.
+        
+        T_link_world = T_cum # Current link (starts at root)
+        
+        for i in range(1, len(chain)):
+            child = chain[i]
+            
+            # 1. Static transform form parent to child
+            T_static = child.origin
+            T_curr = T_link_world @ T_static 
+            
+            # 2. Process joints for this child
+            # Joints are applied sequentially in the child's definition
+            
+            for joint in child.joints:
+                idx = joint_to_idx[joint.name]
+                q = joint_angles[idx]
+                
+                T_j_origin = joint.origin
+                
+                # Transform to Joint Frame (where axis is defined)
+                # The joint rotates around Z (or axis) in this frame.
+                # T_curr accumulates previous joints in this link group.
+                T_joint_frame = T_curr @ T_j_origin
+                
+                # Extract Z axis and Position
+                z_axis = T_joint_frame[:3, :3] @ joint.axis
+                p_origin = T_joint_frame[:3, 3]
+                
+                joint_info.append((idx, z_axis, p_origin, joint.type))
+                
+                # Apply motion
+                if joint.type == 'hinge':
+                    R_motion = axis_angle_to_mat(joint.axis, q)
+                    T_motion = make_T(R_motion, np.zeros(3))
+                elif joint.type == 'slide':
+                    p_motion = joint.axis * q
+                    T_motion = make_T(np.eye(3), p_motion)
+                else:
+                    T_motion = np.eye(4)
+                
+                # Update T_curr for next joint or for link end
+                # T_joint_local = T_j_origin @ T_motion @ inv(T_j_origin)
+                # T_curr = T_curr @ T_joint_local
+                # Simplified: T_curr (base of joint group) -> T_joint_frame (at joint) -> apply motion -> back?
+                # Actually: T_next = T_joint_frame @ T_motion @ inv(T_j_origin) 
+                #          = (T_curr @ T_j_origin) @ T_motion @ inv(T_j_origin)
+                #          = T_curr @ (T_j_origin @ T_motion @ inv(T_j_origin))
+                
+                T_curr = T_joint_frame @ T_motion @ np.linalg.inv(T_j_origin)
+             
+            # Update T_link_world for next iteration
+            T_link_world = T_curr
+            
+        # T_link_world is now the End-Effector transform
+        p_e = T_link_world[:3, 3]
+        
+        # 4. Assemble Jacobian
+        J = np.zeros((6, len(self.robot.joints)))
+        
+        for idx, z, p, j_type in joint_info:
+            if j_type == 'hinge':
+                # J_v = z x (p_e - p)
+                J_v = np.cross(z, p_e - p)
+                J_w = z
+            elif j_type == 'slide':
+                J_v = z
+                J_w = np.zeros(3)
+            else:
+                J_v = np.zeros(3)
+                J_w = np.zeros(3)
+                
+            J[:3, idx] = J_v
+            J[3:, idx] = J_w
+            
+        return J
+        """
+        Inverse kinematics: damped least squares - LMA
+        """
+        
+        # Ensure link_name is in robot
+
+        # Check if q_init is valid or provided. If not, use current joint angles. TODO: Do we need to add current angles to robot class?
+
+        
+        # Initialize solution q
+
+        # Iterate
+
+            # Forward to find current xpos
+
+            # Compute error
+
+            # Check tolerance
+
+            # find jacobian to link. TODO: Should we use site definition instead? MJCF: Attachment sites
+
+            # Inner jac product: jac @ jac.T + damping * I
+
+            # Outer solution for dq: jac.T @ 
+        

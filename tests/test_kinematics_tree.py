@@ -44,11 +44,14 @@ def main():
     # Test FK with zero angles
     print("\nTesting Forward Kinematics (Zero Angles)...")
     zeros = [0.0] * len(robot.joints)
-    fk_result = kin.get_forward_kinematics(zeros)
-    
+    # fk_result = kin.get_forward_kinematics(zeros)
+
+    home = [0, 0, 0, -1.57079, 0, 1.57079, -0.7853]
+    fk_result = kin.get_forward_kinematics(home) # Expect [0.55449948 0.         0.73150243] to agree with MJ.forward
+
     print(f"Computed FK for {len(fk_result)} links.")
     for link_name, transform in fk_result.items():
-        print(f"{link_name}: Translation={transform[:3, 3]}")
+        print(f"{link_name}: Rotation={transform[:3, :3]}, Translation={transform[:3, 3]}")
 
     print("\nSUCCESS: Kinematics tree traversal and basics working.")
 

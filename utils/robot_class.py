@@ -62,3 +62,4 @@ class Robot:
     root: Link
     links: List[Link] 
     joints: List[Joint]
+    joint_states: Optional[List[float]] = None
