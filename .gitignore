@@ -4,5 +4,6 @@ __pycache__
 *.pyo
 *.pyd
 
-*.egg
+*.egg*
 .venv
+.asmr_env

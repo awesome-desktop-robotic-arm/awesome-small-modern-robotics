@@ -2,8 +2,8 @@ import xml.etree.ElementTree as ET
 import numpy as np
 from pathlib import Path
 
-from robot_class import Robot, Link, Joint
-from geometry import quat_to_mat, make_T, euler_to_mat
+from utils.robot_class import Robot, Link, Joint
+from utils.geometry import quat_to_mat, make_T, euler_to_mat
 
 class MJCFParser:
     """Parser for MuJoCo MJCF XML files."""

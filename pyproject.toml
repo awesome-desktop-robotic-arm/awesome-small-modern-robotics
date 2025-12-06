@@ -9,3 +9,7 @@ dependencies = [
     "mujoco>=3.3.7",
     "numpy>=2.3.5",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["asmr*", "utils*"]
