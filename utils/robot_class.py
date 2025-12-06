@@ -14,7 +14,10 @@ class Link:
     com: np.ndarray # Center of Mass (3-vector)
     inertia: np.ndarray # 3x3 inertia matrix
     origin: np.ndarray # 4x4 transformation matrix
-    parent_link: Optional[str] = None
+    # Tree structure
+    parent: Optional["Link"] = None # String syntax for forward definition
+    children: List["Link"] = dataclasses.field(default_factory=list)
+    joints: List["Joint"] = dataclasses.field(default_factory=list) # Joints controlling this link (incoming)
 
     def __post_init__(self):
         """post init to check data validity"""
@@ -26,15 +29,19 @@ class Link:
             raise ValueError("Origin must be a 4x4 matrix")
         if self.com.shape != (3,):
             raise ValueError("COM must be a 3-vector")
+        
+    def __repr__(self):
+        return f"Link(name='{self.name}', children={[c.name for c in self.children]})"
 
 @dataclass
 class Joint:
     name: str
     type: str  # e.g., 'hinge', 'slide' - for mjcf
-    parent_link: str
-    child_link: str
     axis: np.ndarray  # 3-vector
     origin: np.ndarray  # 4x4 transformation matrix
+    # Tree structure
+    parent: Optional["Link"] = None
+    child: Optional["Link"] = None
     limits: Optional[np.ndarray] = None
 
     def __post_init__(self):
@@ -46,8 +53,12 @@ class Joint:
         if self.type not in ['hinge', 'slide']:
             raise ValueError("Type must be 'hinge' or 'slide'")
 
+    def __repr__(self):
+        return f"Joint(name='{self.name}', type='{self.type}')"
+
 @dataclass
 class Robot:
     name: str
+    root: Link
     links: List[Link] 
     joints: List[Joint]

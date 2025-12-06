@@ -29,16 +29,17 @@ class MJCFParser:
             raise ValueError("No worldbody found in MJCF file.")
 
         # Add worldbody as a link
-        self.links.append(Link(name="world", mass=0.0, com=np.zeros(3), inertia=np.zeros((3,3)), origin=np.eye(4)))
+        world_link = Link(name="world", mass=0.0, com=np.zeros(3), inertia=np.zeros((3,3)), origin=np.eye(4))
+        self.links.append(world_link)
         
         # Recursive call to parse children
         for child in worldbody.findall('body'):
-            self._parse_body(child, parent_name="world")
+            self._parse_body(child, parent_link=world_link)
 
         # Construct robot
-        return Robot(name=robot_name, links=self.links, joints=self.joints)
+        return Robot(name=robot_name, root=world_link, links=self.links, joints=self.joints)
         
-    def _parse_body(self, xml_element: ET.Element, parent_name: str):
+    def _parse_body(self, xml_element: ET.Element, parent_link: Link):
         """Recursively parse a <body> element and its children."""
         body_name = xml_element.get('name', f"body_{len(self.links)}")
         
@@ -78,9 +79,13 @@ class MJCFParser:
             com=com, 
             inertia=inertia_mat,
             origin=T_link,
-            parent_link=parent_name
+            parent=parent_link
         )
         self.links.append(new_link)
+        
+        # Add to parent's children
+        if parent_link:
+            parent_link.children.append(new_link)
 
         # --- 4. Parse Joints (Connection to Parent) ---
         # Potentially multiple joints per body
@@ -97,17 +102,20 @@ class MJCFParser:
             
             new_joint = Joint(
                 name=j_name,
-                parent_link=parent_name,
-                child_link=body_name,
+                parent=parent_link,
+                child=new_link,
                 type=j_type,
                 axis=j_axis,
                 origin=T_joint_origin
             )
             self.joints.append(new_joint)
+            
+            # Associate joint with the child link (it moves this link relative to parent)
+            new_link.joints.append(new_joint)
 
         # --- 5. Recurse to Children ---
         for child_body in xml_element.findall('body'):
-            self._parse_body(child_body, parent_name=body_name)
+            self._parse_body(child_body, parent_link=new_link)
 
     def _parse_vec(self, string_vals):
         """Helper to turn "1 0 0" into np.array([1, 0, 0])"""
@@ -173,4 +181,4 @@ if __name__ == "__main__":
         print(f"Link: {link.name}, Mass: {link.mass}")
 
     for joint in robot.joints:
-        print(f"Joint: {joint.name}, Type: {joint.type}, Parent: {joint.parent_link}, Child: {joint.child_link}")
+        print(f"Joint: {joint.name}, Type: {joint.type}, Parent: {joint.parent}, Child: {joint.child}")
