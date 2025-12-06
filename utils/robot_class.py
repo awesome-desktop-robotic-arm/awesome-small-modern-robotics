@@ -43,6 +43,7 @@ class Joint:
     parent: Optional["Link"] = None
     child: Optional["Link"] = None
     limits: Optional[np.ndarray] = None
+    origin_inv: Optional[np.ndarray] = None
 
     def __post_init__(self):
         """post init to check data validity"""
@@ -52,6 +53,9 @@ class Joint:
             raise ValueError("Axis must be a 3-vector")
         if self.type not in ['hinge', 'slide']:
             raise ValueError("Type must be 'hinge' or 'slide'")
+        
+        # Precompute inverse of origin
+        self.origin_inv = np.linalg.inv(self.origin)
 
     def __repr__(self):
         return f"Joint(name='{self.name}', type='{self.type}')"

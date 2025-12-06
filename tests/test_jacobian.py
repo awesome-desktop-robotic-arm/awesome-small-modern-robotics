@@ -124,14 +124,26 @@ def test_jacobian_numerical():
     
     print(f"Testing Jacobian for link: {target_link}")
     
+    import time
+    
+    start = time.perf_counter()
     J_analytic = kin.get_jacobian(target_link, list(q))
+    dt_analytic = time.perf_counter() - start
+    
+    start = time.perf_counter()
     J_num = numerical_jacobian(kin, target_link, q)
+    dt_num = time.perf_counter() - start
     
     print("\nAnalytic Jacobian:\n", J_analytic)
     print("\nNumerical Jacobian:\n", J_num)
     
     diff = np.abs(J_analytic - J_num)
     print("\nMax Diff:", np.max(diff))
+    
+    print(f"\nPerformance:")
+    print(f"Analytic Time: {dt_analytic*1000:.4f} ms")
+    print(f"Numerical Time: {dt_num*1000:.4f} ms")
+    print(f"Speedup: {dt_num/dt_analytic:.2f}x")
     
     # Tolerances: 1e-4 for position, maybe looser for orientation numerical approx
     np.testing.assert_allclose(J_analytic, J_num, atol=1e-4, rtol=1e-3)

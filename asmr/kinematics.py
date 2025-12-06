@@ -14,6 +14,10 @@ from utils.util import timer
 class Kinematics:
     def __init__(self, robot: Robot):
         self.robot = robot
+        # Cache lookups
+        self.link_map = {l.name: l for l in robot.links}
+        self.link_map[robot.root.name] = robot.root
+        self.joint_idx_map = {j.name: i for i, j in enumerate(robot.joints)}
         
     def get_forward_kinematics(self, joint_angles: List[float]) -> Dict[str, np.ndarray]:
         """
@@ -65,9 +69,9 @@ class Kinematics:
                 idx = self.robot.joints.index(joint)
                 q = joint_angles[idx]
                 
-                # Joint origin relative to child frame
+                # Joint origin relative to child frame <- Mostly an MJCF artifact, although T_j_origin is mostly eye(4)
                 T_j_origin = joint.origin 
-                T_j_origin_inv = np.linalg.inv(T_j_origin)
+                T_j_origin_inv = joint.origin_inv
                 
                 if joint.type == 'hinge':
                     R_motion = axis_angle_to_mat(joint.axis, q)
@@ -112,13 +116,9 @@ class Kinematics:
             raise ValueError(f"Number of joint angles ({len(joint_angles)}) must match number of joints ({len(self.robot.joints)})")
 
         # 2. Find link and build chain from root
-        target_link = next((l for l in self.robot.links if l.name == link_name), None)
-        # Check root as well if it's treated separately in links list (usually root is in links? Robot class def link: List[Link])
+        target_link = self.link_map.get(link_name)
         if target_link is None:
-            if self.robot.root.name == link_name:
-                target_link = self.robot.root
-            else:
-                raise ValueError(f"Link {link_name} not found in robot.")
+             raise ValueError(f"Link {link_name} not found in robot.")
         
         chain: List[Link] = []
         curr = target_link
@@ -134,9 +134,6 @@ class Kinematics:
         
         # Store joint info: (index, z_axis_world, p_origin_world, type)
         joint_info: List[Tuple[int, np.ndarray, np.ndarray, str]] = []
-        
-        # Helper map for joint index
-        joint_to_idx = {j.name: i for i, j in enumerate(self.robot.joints)}
 
         # Iterate through chain
         # Note: chain[0] is root. joints are in children connecting parent->child.
@@ -154,14 +151,13 @@ class Kinematics:
             return np.zeros((6, len(self.robot.joints)))
 
         # Re-verify FK logic for T_cum
-        # In FK: T_child_world = T_current_world @ T_child_static @ T_joint_total
-        # We need to replicate this per link.
+        # In FK: T_child = T_parent @ T_link_static @ T_joints
         
         # Current Logic:
-        # T_prev is transf of parent link.
+        # T_link_world represents the transform of the current link frame (parent of next child).
         # We step into child:
-        # T_pre_joint = T_prev @ child.origin (static)
-        # Then apply joints.
+        # T_curr (start of child chain) = T_link_world @ child.origin (static)
+        # Then apply joints sequentially.
         
         T_link_world = T_cum # Current link (starts at root)
         
@@ -176,7 +172,7 @@ class Kinematics:
             # Joints are applied sequentially in the child's definition
             
             for joint in child.joints:
-                idx = joint_to_idx[joint.name]
+                idx = self.joint_idx_map[joint.name]
                 q = joint_angles[idx]
                 
                 T_j_origin = joint.origin
@@ -184,11 +180,11 @@ class Kinematics:
                 # Transform to Joint Frame (where axis is defined)
                 # The joint rotates around Z (or axis) in this frame.
                 # T_curr accumulates previous joints in this link group.
-                T_joint_frame = T_curr @ T_j_origin
+                T_j_world = T_curr @ T_j_origin
                 
                 # Extract Z axis and Position
-                z_axis = T_joint_frame[:3, :3] @ joint.axis
-                p_origin = T_joint_frame[:3, 3]
+                z_axis = T_j_world[:3, :3] @ joint.axis
+                p_origin = T_j_world[:3, 3]
                 
                 joint_info.append((idx, z_axis, p_origin, joint.type))
                 
@@ -203,14 +199,14 @@ class Kinematics:
                     T_motion = np.eye(4)
                 
                 # Update T_curr for next joint or for link end
-                # T_joint_local = T_j_origin @ T_motion @ inv(T_j_origin)
-                # T_curr = T_curr @ T_joint_local
-                # Simplified: T_curr (base of joint group) -> T_joint_frame (at joint) -> apply motion -> back?
-                # Actually: T_next = T_joint_frame @ T_motion @ inv(T_j_origin) 
-                #          = (T_curr @ T_j_origin) @ T_motion @ inv(T_j_origin)
-                #          = T_curr @ (T_j_origin @ T_motion @ inv(T_j_origin))
+                # Strategy: 
+                # 1. We are at T_j_world (Joint Frame in World).
+                # 2. Apply Motion T_motion (in Joint Frame).
+                # 3. Move back to the link frame link utilizing joint.origin_inv.
+                #
+                # effectively: T_next = T_j_world @ T_motion @ joint.origin_inv
                 
-                T_curr = T_joint_frame @ T_motion @ np.linalg.inv(T_j_origin)
+                T_curr = T_j_world @ T_motion @ joint.origin_inv # Need to move back to link frame <- Again an MJCF artifact, mostly eye(4)
              
             # Update T_link_world for next iteration
             T_link_world = T_curr
