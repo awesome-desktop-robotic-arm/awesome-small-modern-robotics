@@ -7,6 +7,13 @@ import numpy as np
 from matplotlib import pyplot as plt
 from robot_class import Robot
 from model_loader import load_robot
+import logging
+
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 class Visualizer:
     """Simple 3D visualizer for Robot objects."""
@@ -22,12 +29,12 @@ class Visualizer:
         self.ax.set_zlabel('Z')
 
         # 1. Build Tree (Adjacency List)
-        link_map = {l.name: l for l in self.robot.links}
+        link_map = {l.name: l for l in self.robot.links} # Only name str is hashable now
         children_map = {name: [] for name in link_map}
         
         for link in self.robot.links:
-            if link.parent_link and link.parent_link in link_map:
-                children_map[link.parent_link].append(link.name)
+            if link.parent and link.parent.name in link_map:
+                children_map[link.parent.name].append(link.name)
 
         # 2. Recursive Draw Function
         def draw_chain(link_name, T_parent_world):
@@ -69,15 +76,15 @@ class Visualizer:
         origin = T[:3, 3]
         # X axis (Red)
         x_axis = origin + T[:3, 0] * scale
-        print(f"x_axis: {x_axis}")
+        logger.debug(f"x_axis: {x_axis}")
         self.ax.plot([origin[0], x_axis[0]], [origin[1], x_axis[1]], [origin[2], x_axis[2]], 'r-')
         # Y axis (Green)
         y_axis = origin + T[:3, 1] * scale
-        print(f"y_axis: {y_axis}")
+        logger.debug(f"y_axis: {y_axis}")
         self.ax.plot([origin[0], y_axis[0]], [origin[1], y_axis[1]], [origin[2], y_axis[2]], 'g-')
         # Z axis (Blue)
         z_axis = origin + T[:3, 2] * scale
-        print(f"z_axis: {z_axis}")
+        logger.debug(f"z_axis: {z_axis}")
         self.ax.plot([origin[0], z_axis[0]], [origin[1], z_axis[1]], [origin[2], z_axis[2]], 'b-')
 
     def _set_axes_equal(self, ax):
