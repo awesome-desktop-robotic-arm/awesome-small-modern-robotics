@@ -162,6 +162,10 @@ def test_jacobian_default_args():
 
     robot = load_robot(robot_path)
     kin = Kinematics(robot)
+
+    print("Robot Root:", robot.root.name)
+    print("Root Children:", [c.name for c in robot.root.children])
+    print("Root Joints:", [j.name for j in robot.root.joints])
     
     q = [0.1] * len(robot.joints)
     robot.joint_states = q

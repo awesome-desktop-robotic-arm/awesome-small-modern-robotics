@@ -7,7 +7,7 @@ Inverse kinematics: damped least squares
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 
-from utils.geometry import axis_angle_to_mat, make_T
+from utils.geometry import axis_angle_to_mat, make_T, mat_to_axis_angle
 from utils.robot_class import Robot, Link, Joint
 from utils.util import timer
 
@@ -95,7 +95,6 @@ class Kinematics:
             # Recurse
             self._fk_recursive(child, T_child_world, joint_angles, result)
 
-    @timer
     def get_jacobian(self, link_name: str, joint_angles: Optional[List[float]] = None) -> np.ndarray:
         """
         Compute Geometric Jacobian for a specific link at a specific joint configuration.
@@ -138,13 +137,6 @@ class Kinematics:
         # Iterate through chain
         # Note: chain[0] is root. joints are in children connecting parent->child.
         # So we iterate from the first child (chain[1:])
-        
-        # Root has no incoming joints in this structure usually.
-        # If root had joints, they would be in root.joints. 
-        # But root.parent is None, so logic holds.
-        
-        # However, we need to process the whole chain. 
-        # If the target is root, Jacobian is zero (if root is fixed).
         
         # Special case: Jacobian of Root. 
         if target_link == self.robot.root:
@@ -233,28 +225,79 @@ class Kinematics:
             J[3:, idx] = J_w
             
         return J
+
+
+    def get_inverse_kinematics(self,
+                            link_name: str,
+                            T_target: np.ndarray, #4x4 transform
+                            q_init: List[float] = None,
+                            max_iter: int = 100,
+                            damping: float = 0.1,
+                            ptol: float = 1e-5, #m, 0.1mm
+                            rtol: float = 1e-4, #rad, ~0.1deg
+                            ) -> List[float]:
         """
         Inverse kinematics: damped least squares - LMA
+
+        args:
+            link_name: Name of the link to compute IK for.
+            T_target: Target transform in world frame.
+            q_init: Initial joint configuration. If None, uses current joint configuration.
+            max_iter: Maximum number of iterations.
+            damping: Damping parameter for LMA.
+            ptol: Position tolerance.
+            rtol: Orientation tolerance.
+
+        returns:
+            q: List of joint angles that achieve the target transform.
         """
         
         # Ensure link_name is in robot
+        target_link = self.link_map.get(link_name)
+        if target_link is None:
+            raise ValueError(f"Link {link_name} not found in robot.")
 
-        # Check if q_init is valid or provided. If not, use current joint angles. TODO: Do we need to add current angles to robot class?
-
+        # Check if q_init is valid or provided. If not, use current joint angles.
+        if q_init is None:
+            if self.robot.joint_states is None:
+                raise ValueError("No joint states provided and no current joint configuration found in robot.")
+            q_init = self.robot.joint_states
         
         # Initialize solution q
+        q = q_init.copy()
 
         # Iterate
-
+        for i in range(max_iter):
             # Forward to find current xpos
+            T_curr_dict = self.get_forward_kinematics(q) #This returns a dict of transforms for each link
+            T_curr = T_curr_dict[target_link.name]             
 
             # Compute error
+            # Position
+            p_err = T_target[:3, 3] - T_curr[:3, 3]
+            # Orientation
+            R_err = T_target[:3, :3] @ T_curr[:3, :3].T # Both SO3 so works: R_err @ R_curr = R_target
+            axis, angle = mat_to_axis_angle(R_err)
+            w_err = axis * angle
+
+            # Assemble to 6-vector
+            err = np.concatenate((p_err, w_err))
 
             # Check tolerance
+            if np.linalg.norm(err) < ptol and np.linalg.norm(angle) < rtol: # Or should we use axis angle to find exact angle?
+                break
 
             # find jacobian to link. TODO: Should we use site definition instead? MJCF: Attachment sites
+            J = self.get_jacobian(link_name, q)
 
             # Inner jac product: jac @ jac.T + damping * I
+            JJ = J @ J.T + damping * np.eye(6) # 6DOF for full jac
 
             # Outer solution for dq: jac.T @ 
+            dq = J.T @ np.linalg.solve(JJ, err)
+
+            # Update q
+            q += dq
+        return q
+        # TODO: Add an IK with secondary objective? Null state projection?
         
