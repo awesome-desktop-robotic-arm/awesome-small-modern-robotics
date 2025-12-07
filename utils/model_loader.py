@@ -31,7 +31,10 @@ class MJCFParser:
         # Add worldbody as a link
         world_link = Link(name="world", mass=0.0, com=np.zeros(3), inertia=np.zeros((3,3)), origin=np.eye(4))
         self.links.append(world_link)
-        
+        # Note that world root will have no joints. 
+        # This design is made to accommodate many robots in the same worldbody -> e.g. aloha
+        # Worldbody -> robot base -> link 0 -> joint 0 -> link 1 -> joint 1 -> ...
+         
         # Recursive call to parse children
         for child in worldbody.findall('body'):
             self._parse_body(child, parent_link=world_link)
