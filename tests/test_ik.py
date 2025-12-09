@@ -7,7 +7,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.model_loader import load_robot
-from asmr.kinematics import Kinematics
+from asmr.kinematics import get_forward_kinematics, get_inverse_kinematics
 from utils.geometry import make_T, axis_angle_to_mat
 
 def test_ik_convergence():
@@ -25,11 +25,10 @@ def test_ik_convergence():
         return
 
     robot = load_robot(robot_path)
-    kin = Kinematics(robot)
 
     # Pick a target link
     link_names = [l.name for l in robot.links]
-    target_link = 'fr3_hand' 
+    target_link = 'fr3_link7' 
     found = any(target_link in name for name in link_names)
     if not found:
         # Try finding the LAST link
@@ -42,7 +41,7 @@ def test_ik_convergence():
     q_target = np.random.uniform(-1.0, 1.0, size=n_joints)
     
     # Compute FK for this q
-    res = kin.get_forward_kinematics(list(q_target))
+    res = get_forward_kinematics(robot, list(q_target))
     T_target = res[target_link]
     
     print(f"Target q: {q_target}")
@@ -55,9 +54,8 @@ def test_ik_convergence():
 
     # 3. Solve IK
     try:
-        q_sol = kin.get_inverse_kinematics(
-            link_name=target_link,
-            T_target=T_target,
+        q_sol = get_inverse_kinematics(robot, target_link,
+            T_target,
             q_init=list(q_init),
             max_iter=100,
             ptol=1e-4,
@@ -71,7 +69,7 @@ def test_ik_convergence():
     
     # 4. Verification
     # Re-compute FK
-    res_sol = kin.get_forward_kinematics(list(q_sol))
+    res_sol = get_forward_kinematics(robot, list(q_sol))
     T_sol = res_sol[target_link]
     
     # Check Pose Error

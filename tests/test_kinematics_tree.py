@@ -6,7 +6,7 @@ import numpy as np
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.model_loader import load_robot
-from asmr.kinematics import Kinematics
+from asmr.kinematics import get_forward_kinematics
 from utils.robot_class import Link
 
 def print_tree(link: Link, level=0):
@@ -38,16 +38,13 @@ def main():
     print("\nKinematics Tree Structure:")
     print_tree(robot.root)
     
-    # Initialize Kinematics
-    kin = Kinematics(robot)
-    
     # Test FK with zero angles
     print("\nTesting Forward Kinematics (Zero Angles)...")
     zeros = [0.0] * len(robot.joints)
     # fk_result = kin.get_forward_kinematics(zeros)
 
     home = [0, 0, 0, -1.57079, 0, 1.57079, -0.7853]
-    fk_result = kin.get_forward_kinematics(home) # Expect [0.55449948 0.         0.73150243] to agree with MJ.forward
+    fk_result = get_forward_kinematics(robot, home) # Expect [0.55449948 0.         0.73150243] to agree with MJ.forward
 
     print(f"Computed FK for {len(fk_result)} links.")
     for link_name, transform in fk_result.items():

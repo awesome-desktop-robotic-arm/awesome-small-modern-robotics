@@ -67,3 +67,18 @@ class Robot:
     links: List[Link] 
     joints: List[Joint]
     joint_states: Optional[List[float]] = None
+
+    def __post_init__(self):
+        """post init to check data validity"""
+        if self.root is None:
+            raise ValueError("Root must be a Link")
+        if self.links is None:
+            raise ValueError("Links must be a list of Link")
+        if self.joints is None:
+            raise ValueError("Joints must be a list of Joint")
+
+        # Construct lookup hashmaps for quick access
+        self.link_map = {link.name: link for link in self.links}
+        self.link_map[self.root.name] = self.root
+        self.joint_idx_map = {joint.name: idx for idx, joint in enumerate(self.joints)}
+        

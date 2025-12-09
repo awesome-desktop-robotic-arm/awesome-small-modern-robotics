@@ -7,10 +7,10 @@ import numpy as np
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.model_loader import load_robot
-from asmr.kinematics import Kinematics
+from asmr.kinematics import get_forward_kinematics, get_jacobian
 from utils.robot_class import Robot
 
-def numerical_jacobian(kin: Kinematics, link_name: str, q: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
+def numerical_jacobian(robot: Robot, link_name: str, q: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
     """
     Compute Jacobian numerically using central difference
     """
@@ -33,8 +33,8 @@ def numerical_jacobian(kin: Kinematics, link_name: str, q: np.ndarray, epsilon: 
         q_plus[i] += epsilon
         q_minus[i] -= epsilon
         
-        fk_plus = kin.get_forward_kinematics(q_plus)
-        fk_minus = kin.get_forward_kinematics(q_minus)
+        fk_plus = get_forward_kinematics(robot, q_plus)
+        fk_minus = get_forward_kinematics(robot, q_minus)
         
         T_plus = fk_plus[link_name]
         T_minus = fk_minus[link_name]
@@ -103,7 +103,6 @@ def test_jacobian_numerical():
         
     print(f"Loading robot from: {robot_path}")
     robot = load_robot(robot_path)
-    kin = Kinematics(robot)
     
     # Test configuration - random or fixed based on num joints
     n_joints = len(robot.joints)
@@ -127,11 +126,11 @@ def test_jacobian_numerical():
     import time
     
     start = time.perf_counter()
-    J_analytic = kin.get_jacobian(target_link, list(q))
+    J_analytic = get_jacobian(robot, target_link, list(q))
     dt_analytic = time.perf_counter() - start
     
     start = time.perf_counter()
-    J_num = numerical_jacobian(kin, target_link, q)
+    J_num = numerical_jacobian(robot, target_link, q)
     dt_num = time.perf_counter() - start
     
     print("\nAnalytic Jacobian:\n", J_analytic)
@@ -161,7 +160,6 @@ def test_jacobian_default_args():
          return
 
     robot = load_robot(robot_path)
-    kin = Kinematics(robot)
 
     print("Robot Root:", robot.root.name)
     print("Root Children:", [c.name for c in robot.root.children])
@@ -171,7 +169,7 @@ def test_jacobian_default_args():
     robot.joint_states = q
     
     target_link = robot.links[-1].name
-    J = kin.get_jacobian(target_link)
+    J = get_jacobian(robot, target_link)
     assert J.shape == (6, len(robot.joints))
     print("Default args test passed.")
 
