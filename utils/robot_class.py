@@ -67,6 +67,7 @@ class Robot:
     links: List[Link] 
     joints: List[Joint]
     joint_states: Optional[List[float]] = None
+    q_home: Optional[List[float]] = None 
 
     def __post_init__(self):
         """post init to check data validity"""
@@ -76,6 +77,15 @@ class Robot:
             raise ValueError("Links must be a list of Link")
         if self.joints is None:
             raise ValueError("Joints must be a list of Joint")
+        if self.joint_states is not None:
+            if len(self.joint_states) != len(self.joints):
+                raise ValueError("Joint states length must match number of joints")
+        if self.q_home is not None:
+            if len(self.q_home) != len(self.joints):
+                raise ValueError("Home configuration length must match number of joints")
+        
+        # Initialize q_joint to home
+        self.joint_states = self.q_home # Will be all zeros if no q_home provided
 
         # Construct lookup hashmaps for quick access
         self.link_map = {link.name: link for link in self.links}

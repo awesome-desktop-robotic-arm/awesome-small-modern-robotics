@@ -1,3 +1,7 @@
+"""
+Parser for loading and constructing robot models from MJCF and URDF files.
+"""
+
 import xml.etree.ElementTree as ET
 import numpy as np
 from pathlib import Path
@@ -39,8 +43,38 @@ class MJCFParser:
         for child in worldbody.findall('body'):
             self._parse_body(child, parent_link=world_link)
 
+        # If this robot has a home pose, parse it explicitly.
+        q_home = np.zeros(len(self.joints), dtype=float)
+
+        # Find the <key name="home"> element in a clear, explicit way
+        home_key = None
+        for keyframe in root.findall('keyframe'):
+            for key in keyframe.findall('key'):
+                if key.get('name', '') == 'home':
+                    home_key = key
+                    break
+            if home_key is not None:
+                break
+
+        if home_key is not None:
+            qpos_str = home_key.get('qpos', '').strip()
+            if qpos_str:
+                qpos = np.fromstring(qpos_str, sep=' ')
+                if qpos.size == len(self.joints):
+                    q_home = qpos.astype(float)
+                elif qpos.size < len(self.joints):
+                    q_home[:qpos.size] = qpos
+                    print(
+                        f"Parsed home qpos has {qpos.size} values but robot has {len(self.joints)} joints; filling prefix."
+                    )
+                else:
+                    q_home = qpos[:len(self.joints)].astype(float)
+                    print(
+                        f"Parsed home qpos has {qpos.size} values but robot has {len(self.joints)} joints; truncating."
+                    )
+
         # Construct robot
-        return Robot(name=robot_name, root=world_link, links=self.links, joints=self.joints)
+        return Robot(name=robot_name, root=world_link, links=self.links, joints=self.joints, q_home=q_home)
         
     def _parse_body(self, xml_element: ET.Element, parent_link: Link):
         """Recursively parse a <body> element and its children."""

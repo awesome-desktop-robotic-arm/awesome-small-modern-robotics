@@ -26,6 +26,8 @@ def test_ik_convergence():
 
     robot = load_robot(robot_path)
 
+    print(f"Robot loaded: pose at home: {robot.joint_states}")
+
     # Pick a target link
     link_names = [l.name for l in robot.links]
     target_link = 'fr3_link7' 
@@ -84,6 +86,7 @@ def test_ik_convergence():
     
     if p_err < 1e-3 and ang_err < 1e-2:
         print("SUCCESS: IK Converged to target pose.")
+        
     else:
         print("FAILURE: IK did not converge.")
         # Note: DLS might get stuck in local minima, but with small perturbation it implies bug if fails.

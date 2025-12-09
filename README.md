@@ -6,12 +6,19 @@ A utility collection for robotics development
 
 ## Modules
 
-- Kinematics
-- Dynamics -> will borrow nre from mujoco for ID
 - Utils
+    - [Robot dataclass definition](utils/robot_class.py)
+    - [Robot parser](utils/model_loader.py)
+    - [Robot visualizer](utils/visualizer.py) 
+    - [Geometric helpers](utils/geometry.py)
+- Kinematics:    
+    - [x] [Kinematics module](asmr/kinematics.py)
+        Stateless kinematics functions that relies on `Robot` class
+        - [x] FK
+        - [x] IK
+        - [x] Analytical jacobian
 
-## Use
-
-This repository is sim-ready, so it parses mjcf for robot descriptions
-
-See `CONVENTIONS.md` for convention and unit definitions.
+    - [ ] [Dynamics module](asmr/dynamics.py)
+        Stateless dynamics functions that relies on `Robot` class
+        - [ ] ID
+        - [ ] FD - is this needed explicitly?
