@@ -13,29 +13,29 @@ from utils.geometry import axis_angle_to_mat, make_T, mat_to_axis_angle
 from utils.robot_class import Robot, Link, Joint
 from utils.util import timer
         
-def get_forward_kinematics(robot: Robot, joint_angles: List[float]) -> Dict[str, np.ndarray]:
+def get_forward_kinematics(robot: Robot, q: List[float]) -> Dict[str, np.ndarray]:
     """
     Forward kinematics: walk down kinematics tree
     Args:
-        joint_angles (List[float]): List of joint angles matching robot.joints order
+        q (List[float]): List of joint angles matching robot.joints order
     Returns:
         Dict[str, np.ndarray]: Dictionary of link names and their forward kinematics (T_link_world)
     """
-    if len(joint_angles) != len(robot.joints):
-        raise ValueError(f"Number of joint angles ({len(joint_angles)}) must match number of joints ({len(robot.joints)})")
+    if len(q) != len(robot.joints):
+        raise ValueError(f"Number of joint angles ({len(q)}) must match number of joints ({len(robot.joints)})")
 
     result: Dict[str, np.ndarray] = {}
     
     # Start recursion from root
     # We assume root.origin is its transform in world (usually identity for "world" link)
-    _fk_recursive(robot, robot.root, robot.root.origin, joint_angles, result)
+    _fk_recursive(robot, robot.root, robot.root.origin, q, result)
     
     return result
 
 def _fk_recursive(robot: Robot,
     link_current: Link, 
     T_current_world: np.ndarray, 
-    joint_angles: List[float],
+    q: List[float],
     result: Dict[str, np.ndarray]):
     """
     Recursively compute forward kinematics
@@ -43,7 +43,7 @@ def _fk_recursive(robot: Robot,
     Args:
         link_current (Link): Current link
         T_current_world (np.ndarray): Transform of current link in world frame
-        joint_angles (List[float]): List of joint angles matching robot.joints order
+        q (List[float]): List of joint angles matching robot.joints order
         result (Dict[str, np.ndarray]): Dictionary of link names and their forward kinematics (T_link_world)
     """
     # Store result for current link
@@ -61,17 +61,17 @@ def _fk_recursive(robot: Robot,
         # Iterate over all joints that connect parent to this child
         for joint in child.joints:
             idx = robot.joints.index(joint)
-            q = joint_angles[idx]
+            q_i = q[idx]
             
             # Joint origin relative to child frame <- Mostly an MJCF artifact, although T_j_origin is mostly eye(4)
             T_j_origin = joint.origin 
             T_j_origin_inv = joint.origin_inv
             
             if joint.type == 'hinge':
-                R_motion = axis_angle_to_mat(joint.axis, q)
+                R_motion = axis_angle_to_mat(joint.axis, q_i)
                 T_motion = make_T(R_motion, np.zeros(3))
             elif joint.type == 'slide':
-                p_motion = joint.axis * q
+                p_motion = joint.axis * q_i
                 T_motion = make_T(np.eye(3), p_motion)
             else:
                 T_motion = np.eye(4)
@@ -87,9 +87,9 @@ def _fk_recursive(robot: Robot,
         T_child_world = T_current_world @ T_child_static @ T_joint_total
         
         # Recurse
-        _fk_recursive(robot, child, T_child_world, joint_angles, result)
+        _fk_recursive(robot, child, T_child_world, q, result)
 
-def get_jacobian(robot: Robot, link_name: str, joint_angles: Optional[List[float]] = None) -> np.ndarray:
+def get_jacobian(robot: Robot, link_name: str, q: Optional[List[float]] = None) -> np.ndarray:
     """
     Compute Geometric Jacobian for a specific link at a specific joint configuration.
     Convention:
@@ -100,13 +100,13 @@ def get_jacobian(robot: Robot, link_name: str, joint_angles: Optional[List[float
         - J_angular = z
     """
     # 1. Resolve joint angles
-    if joint_angles is None:
+    if q is None:
         if robot.joint_states is None:
             raise ValueError("Joint angles not provided and no current configuration set in robot.")
-        joint_angles = robot.joint_states
+        q = robot.joint_states
         
-    if len(joint_angles) != len(robot.joints):
-        raise ValueError(f"Number of joint angles ({len(joint_angles)}) must match number of joints ({len(robot.joints)})")
+    if len(q) != len(robot.joints):
+        raise ValueError(f"Number of joint angles ({len(q)}) must match number of joints ({len(robot.joints)})")
 
     # 2. Find link and build chain from root
     target_link = robot.link_map.get(link_name)
@@ -159,7 +159,7 @@ def get_jacobian(robot: Robot, link_name: str, joint_angles: Optional[List[float
         
         for joint in child.joints:
             idx = robot.joint_idx_map[joint.name]
-            q = joint_angles[idx]
+            q_i = q[idx]
             
             T_j_origin = joint.origin
             
@@ -176,10 +176,10 @@ def get_jacobian(robot: Robot, link_name: str, joint_angles: Optional[List[float
             
             # Apply motion
             if joint.type == 'hinge':
-                R_motion = axis_angle_to_mat(joint.axis, q)
+                R_motion = axis_angle_to_mat(joint.axis, q_i)
                 T_motion = make_T(R_motion, np.zeros(3))
             elif joint.type == 'slide':
-                p_motion = joint.axis * q
+                p_motion = joint.axis * q_i
                 T_motion = make_T(np.eye(3), p_motion)
             else:
                 T_motion = np.eye(4)
