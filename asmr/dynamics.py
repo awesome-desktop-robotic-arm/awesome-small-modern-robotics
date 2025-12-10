@@ -26,6 +26,8 @@ def forward_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, tau: np.ndarra
     Returns:
         np.ndarray: Joint accelerations (n,)
     """
+    # Check input dimensions
+    # check_input_dimensions(robot, q, qd, tau)
 
     if F_ext is None:
         tau_ext = np.zeros_like(robot.joint_states)
@@ -44,7 +46,7 @@ def forward_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, tau: np.ndarra
 
 def get_mass_matrix(robot: Robot, q: np.ndarray) -> np.ndarray:
     """
-    Compute the inertia matrix of the robot at given joint positions
+    Compute the inertia matrix of the robot at given joint positions via Column-wise rNEA
 
     Args:
         robot (Robot): Robot object
@@ -53,8 +55,21 @@ def get_mass_matrix(robot: Robot, q: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: Mass matrix (n, n)
     """
+    # Check input dimensions
+    # check_input_dimensions(robot, q)
+
+    M = np.zeros((len(q), len(q)))
+    qd = np.zeros_like(q)
     
-    pass
+    # Compute mass column via ID
+    for joint in range(len(q)):
+        qdd = np.zeros_like(q)
+        qdd[joint] = 1.0
+        tau = get_inverse_dynamics(robot=robot, q=q, qd=qd, qdd=qdd, gravity=np.zeros(3)) # Need to turn off gravity to avoid double calc
+        M[:, joint] = tau
+    
+    return M
+
 
 def get_bias_forces(robot: Robot, q: np.ndarray, qd: np.ndarray) -> np.ndarray:
     """
@@ -67,6 +82,8 @@ def get_bias_forces(robot: Robot, q: np.ndarray, qd: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: Bias forces (n,)
     """
+    # Check input dimensions
+    # check_input_dimensions(robot, q, qd)
 
     tau = get_inverse_dynamics(robot=robot, q=q, qd=qd, qdd=np.zeros_like(qd))
     tau += get_joint_friction(robot=robot, q=q, qd=qd)
@@ -110,6 +127,9 @@ def get_inverse_dynamics(robot: Robot,
     Returns:
         np.ndarray: Joint torques (n,)
     """
+    # Check input dimensions
+    check_input_dimensions(robot, q, qd, qdd)/
+
     # Gravity
     if gravity is None:
         gravity = np.array([0, 0, -9.81])
