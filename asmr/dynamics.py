@@ -64,15 +64,38 @@ def get_bias_forces(robot: Robot, q: np.ndarray, qd: np.ndarray) -> np.ndarray:
         robot (Robot): Robot object
         q (np.ndarray): Joint positions (n,)
         qd (np.ndarray): Joint velocities (n,)
-
     Returns:
         np.ndarray: Bias forces (n,)
     """
+
+    tau = get_inverse_dynamics(robot=robot, q=q, qd=qd, qdd=np.zeros_like(qd))
+    tau += get_joint_friction(robot=robot, q=q, qd=qd)
     
+    return tau
+
+
+def get_joint_friction(robot: Robot, q: np.ndarray, qd: np.ndarray) -> np.ndarray:
+    """
+    Compute the joint friction forces of the robot at given joint positions and velocities
+
+    Args:
+        robot (Robot): Robot object
+        q (np.ndarray): Joint positions (n,)
+        qd (np.ndarray): Joint velocities (n,)
+
+    Returns:
+        np.ndarray: Joint friction forces (n,)
+    """
+    # TODO: Implement this later.
     pass
 
 
-def get_inverse_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, qdd: np.ndarray, gravity: np.ndarray = np.array([0, 0, -9.81])) -> np.ndarray:
+def get_inverse_dynamics(robot: Robot, 
+                         q: np.ndarray, 
+                         qd: np.ndarray, 
+                         qdd: np.ndarray, 
+                         external_forces: Optional[Dict[str, np.ndarray]] = None, # {link_name: F_ext}
+                         gravity: Optional[np.ndarray] = None) -> np.ndarray:
     """
     Compute the inverse dynamics of the robot at given joint positions, velocities, and accelerations through recursive Newton-Euler algorithm
 
@@ -81,10 +104,16 @@ def get_inverse_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, qdd: np.nd
         q (np.ndarray): Joint positions (n,)
         qd (np.ndarray): Joint velocities (n,)
         qdd (np.ndarray): Joint accelerations (n,)
+        external_forces (Optional[Dict[str, np.ndarray]], optional): External forces at each link (6,). Defaults to None.
+        gravity (np.ndarray, optional): Gravity vector (3,). Defaults to None to be initialized.
 
     Returns:
         np.ndarray: Joint torques (n,)
     """
+    # Gravity
+    if gravity is None:
+        gravity = np.array([0, 0, -9.81])
+    
     # Initial velocity and acceleration - initial acceleration assumes -gravity
     v_0 = np.zeros(3)
     w_0 = np.zeros(3)
@@ -158,6 +187,12 @@ def get_inverse_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, qdd: np.nd
 
         # Inertial forces
         F_i, N_i = link_forces[link.name]
+
+        # External forces
+        if external_forces is not None and link.name in external_forces:
+            F_ext = external_forces[link.name]
+            F_i += F_ext[:3]
+            N_i += F_ext[3:]
 
         # forces from children
         f_total = F_i.copy()
