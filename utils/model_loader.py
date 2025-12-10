@@ -145,6 +145,12 @@ class MJCFParser:
                 axis=j_axis,
                 T_origin=T_joint_origin
             )
+
+            # Parse limits
+            limit_str = joint_elem.get('range')
+            if limit_str:
+                new_joint.limits = self._parse_vec(limit_str)
+
             self.joints.append(new_joint)
             
             # Associate joint with the child link (it moves this link relative to parent)

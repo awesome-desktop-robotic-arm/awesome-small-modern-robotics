@@ -4,20 +4,12 @@ from pathlib import Path
 from utils.robot_class import Robot
 from utils.model_loader import load_robot
 from asmr.dynamics import get_inverse_dynamics, get_mass_matrix, get_bias_forces, forward_dynamics
-from asmr.kinematics import get_forward_kinematics
-
-# We will implement these validaton tests one by one:
-# 1. test_gravity_compensation
-# 2. test_mass_matrix_properties
-# 3. test_id_fd_consistency
 
 
 def test_gravity_compensation():
     """
     Test if gravity compensation is reasonable.
     """
-
-    # Or relative to current working directory
     robot_path = Path("mujoco_menagerie") / "franka_fr3" / "fr3.xml"
     robot = load_robot(str(robot_path))
     print(f"Loaded robot for gravity compensation test: {robot.name}")
@@ -36,13 +28,33 @@ def test_gravity_compensation():
     print("Gravity compensation test passed.")
 
 
+def test_pure_inertial_scaling():
+    """
+    Inertia should scale linearly
+    """
+    robot_path = Path("mujoco_menagerie") / "franka_fr3" / "fr3.xml"
+    robot = load_robot(str(robot_path))
+    print(f"Loaded robot for gravity compensation test: {robot.name}")
+    q = robot.q_home
+    
+    # Test linear scaling
+    for scale in [0.5, 1.0, 2.0]:
+        qdd = np.array([1.0, 0, 0, 0, 0, 0, 0]) * scale
+        tau = get_inverse_dynamics(robot, q, np.zeros_like(q), qdd, gravity=np.zeros(3))
+        
+        # Should scale linearly
+        if scale == 1.0:
+            tau_ref = tau
+        else:
+            tau_ref = tau * (1.0 / scale)
+
+        assert np.allclose(tau, tau_ref * scale, rtol=0.01), "Pure inertial scaling failed."
+
 
 def test_mass_matrix_properties():
     """
     Test if mass matrix is symmetric and positive definite.
     """
-
-    # Or relative to current working directory
     robot_path = Path("mujoco_menagerie") / "franka_fr3" / "fr3.xml"
     robot = load_robot(str(robot_path))
     print(f"Loaded robot for mass matrix properties test: {robot.name}")
@@ -62,8 +74,6 @@ def test_id_fd_consistency():
     """
     Test if inverse dynamics and forward dynamics are consistent.
     """
-
-    # Or relative to current working directory
     robot_path = Path("mujoco_menagerie") / "franka_fr3" / "fr3.xml"
     robot = load_robot(str(robot_path))
     print(f"Loaded robot for ID-FD consistency test: {robot.name}")
@@ -82,7 +92,51 @@ def test_id_fd_consistency():
     print("Inverse dynamics and forward dynamics are consistent.")
 
 
+def benchmark_against_mujoco():
+    """
+    Benchmark asmr dynamics against MuJoCo's built-in dynamics.
+    """
+    
+    import mujoco
+    robot_path = Path("mujoco_menagerie") / "franka_fr3" / "fr3.xml"
+    robot_asmr = load_robot(str(robot_path))
+
+    model = mujoco.MjModel.from_xml_path(str(robot_path))
+    data = mujoco.MjData(model)
+
+    # --- KEY CHANGE: Disable Friction/Armature/Damping in MuJoCo for RB-Comparison ---
+    model.dof_damping[:] = 0
+    model.dof_armature[:] = 0
+    model.dof_frictionloss[:] = 0
+    # ---------------------------------------------------------------------------------
+
+    q = robot_asmr.q_home
+    qd = np.zeros(len(robot_asmr.joints))
+    qdd = np.random.uniform(-0.5, 0.5, len(robot_asmr.joints))
+
+    # ASMR inverse dynamics
+    tau_asmr = get_inverse_dynamics(robot_asmr, q, qd, qdd)
+    # MuJoCo inverse dynamics
+    data.qpos[:] = q
+    data.qvel[:] = qd
+    data.qacc[:] = qdd
+    mujoco.mj_inverse(model, data)
+
+    # log results
+    tau_mujoco = data.qfrc_inverse.copy()   
+    
+    print(f"MuJoCo computed tau: {tau_mujoco}")
+    print(f"ASMR computed tau:   {tau_asmr}")
+    print(f"Difference:          {tau_asmr - tau_mujoco}")
+
+
+    assert np.allclose(tau_asmr, tau_mujoco, atol=1e-5), \
+        f"Benchmark failed: max diff = {np.max(np.abs(tau_asmr - tau_mujoco))}"
+    print("Benchmark against MuJoCo passed.")
+
 if __name__ == "__main__":
+    test_pure_inertial_scaling()
     test_gravity_compensation()
     test_mass_matrix_properties()
     test_id_fd_consistency()
+    benchmark_against_mujoco()

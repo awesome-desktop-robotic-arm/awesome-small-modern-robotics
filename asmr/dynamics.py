@@ -9,8 +9,10 @@ Inverse dynamics: recursive Newton-Euler algorithm
 import numpy as np
 from utils.robot_class import Robot, Link
 from utils.util import check_input_dimensions
+from utils.geometry import axis_angle_to_mat
 from asmr.kinematics import get_jacobian
 from typing import Optional, Dict
+
 
 
 def forward_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, tau: np.ndarray, F_ext: Optional[np.ndarray] = None) -> np.ndarray:
@@ -175,6 +177,9 @@ def get_inverse_dynamics(robot: Robot,
             dv_curr = R @ (dv_parent + term1 + term2)
             dw_curr = R @ dw_parent
 
+            # Store rotations for backward pass
+            joint_rotations = []
+
             # Apply Joint Motion (Iterate through all joints connecting Parent -> Child)
             for joint in link.joints:
                 joint_index = robot.joints.index(joint)
@@ -183,21 +188,30 @@ def get_inverse_dynamics(robot: Robot,
                 qdd_i = qdd[joint_index]
 
                 if joint.type == 'hinge':
+                    
+                    # Rotate Frame by Joint Angle, need to rotate incoming vectors INTO the new frame.
+                    # R_j is local rotation from Joint=0 to Joint=q
+                    # v_new = R_j.T @ v_old
+                    R_j = axis_angle_to_mat(joint.axis, q_i)
+                    joint_rotations.append(R_j)
+                    
+                    v_curr = R_j.T @ v_curr
+                    w_curr = R_j.T @ w_curr
+                    dv_curr = R_j.T @ dv_curr
+                    dw_curr = R_j.T @ dw_curr
+
                     z_axis = joint.axis / np.linalg.norm(joint.axis)
                     
-                    # Update velocities
+                    # Add Joint Velocity
                     w_prev = w_curr.copy() 
                     w_curr += z_axis * qd_i
-                    v_curr += np.cross(w_curr, joint.T_origin[:3, 3]) 
+                    
                     
                     # Update accelerations
                     dw_curr += z_axis * qdd_i + np.cross(w_prev, z_axis * qd_i) # Alpha + Coriolis
-                    
-                    # Acceleration terms from joint offset
-                    p_joint = joint.T_origin[:3, 3] 
-                    dv_curr += np.cross(dw_curr, p_joint) + np.cross(w_curr, np.cross(w_curr, p_joint)) # Tangential + Centrifugal
 
                 elif joint.type == 'slide':
+                    joint_rotations.append(np.eye(3)) # No rotation for slide
                     z_axis = joint.axis / np.linalg.norm(joint.axis)
                     v_curr += z_axis * qd_i
                     # Coriolis: 2 * cross(w, v_rel)
@@ -236,21 +250,33 @@ def get_inverse_dynamics(robot: Robot,
             f_total += f_child_curr
             m_total += m_child_curr
 
-        # --- 4. Project to Joint Torques ---
+        # --- 4. Project to Joint Torques AND Un-Rotate ---
         if link != robot.root:
-            for joint in link.joints:
+            # Iterate in REVERSE to un-wind rotations
+            for i, joint in enumerate(reversed(link.joints)):
                 idx = robot.joints.index(joint)
+                
+                # Note: link.joints is Forward. reversed is Backward.
+                # joint_rotations was appended Forward.
+                # Corresp rotation index is len - 1 - i
+                R_j = joint_rotations[len(joint_rotations) - 1 - i]
 
-                # Shift moment to joint frame
-                p_joint = joint.T_origin[:3, 3] # Usually zero :)
+                # Shift moment to joint frame (if p_joint != 0)
+                p_joint = joint.T_origin[:3, 3] # Usually zero
                 m_total -= np.cross(p_joint, f_total)
                 
+                # Project Torque (Current Frame is aligned with Joint Axis)
                 if joint.type == 'hinge':
                     z_axis = joint.axis / np.linalg.norm(joint.axis)
                     tau[idx] = np.dot(m_total, z_axis)
                 elif joint.type == 'slide':
                     z_axis = joint.axis / np.linalg.norm(joint.axis)
                     tau[idx] = np.dot(f_total, z_axis)
+                
+                # Un-Rotate Forces (Back to parent joint / Static frame)
+                # f_prev = R_j @ f_curr
+                f_total = R_j @ f_total
+                m_total = R_j @ m_total
 
         return f_total, m_total
 

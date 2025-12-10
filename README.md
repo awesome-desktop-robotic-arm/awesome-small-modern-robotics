@@ -20,6 +20,7 @@ A utility collection for robotics development
 
     - [ ] [Dynamics module](asmr/dynamics.py)
         Stateless dynamics functions that relies on `Robot` class
-        - [x] ID
-        - [x] FD
+        - [~~x~~] ID 
+            - this is currently pure rigid body rNEA and does not include friction and armature effects (TODO)
+        - [~~x~~] FD
             - [ ] FD with Featherstone's ADA
