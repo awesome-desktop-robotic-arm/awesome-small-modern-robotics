@@ -64,8 +64,8 @@ def _fk_recursive(robot: Robot,
             q_i = q[idx]
             
             # Joint origin relative to child frame <- Mostly an MJCF artifact, although T_j_origin is mostly eye(4)
-            T_j_origin = joint.origin 
-            T_j_origin_inv = joint.origin_inv
+            T_j_origin = joint.T_origin 
+            T_j_origin_inv = joint.T_origin_inv
             
             if joint.type == 'hinge':
                 R_motion = axis_angle_to_mat(joint.axis, q_i)
@@ -161,7 +161,7 @@ def get_jacobian(robot: Robot, link_name: str, q: Optional[List[float]] = None) 
             idx = robot.joint_idx_map[joint.name]
             q_i = q[idx]
             
-            T_j_origin = joint.origin
+            T_j_origin = joint.T_origin
             
             # Transform to Joint Frame (where axis is defined)
             # The joint rotates around Z (or axis) in this frame.
@@ -190,9 +190,9 @@ def get_jacobian(robot: Robot, link_name: str, q: Optional[List[float]] = None) 
             # 2. Apply Motion T_motion (in Joint Frame).
             # 3. Move back to the link frame link utilizing joint.origin_inv.
             #
-            # effectively: T_next = T_j_world @ T_motion @ joint.origin_inv
+            # effectively: T_next = T_j_world @ T_motion @ joint.T_origin_inv
             
-            T_curr = T_j_world @ T_motion @ joint.origin_inv # Need to move back to link frame <- Again an MJCF artifact, mostly eye(4)
+            T_curr = T_j_world @ T_motion @ joint.T_origin_inv # Need to move back to link frame <- Again an MJCF artifact, mostly eye(4)
             
         # Update T_link_world for next iteration
         T_link_world = T_curr

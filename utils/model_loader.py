@@ -143,7 +143,7 @@ class MJCFParser:
                 child=new_link,
                 type=j_type,
                 axis=j_axis,
-                origin=T_joint_origin
+                T_origin=T_joint_origin
             )
             self.joints.append(new_joint)
             
