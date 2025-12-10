@@ -7,12 +7,13 @@ Inverse dynamics: recursive Newton-Euler algorithm
 """
 
 import numpy as np
-from utils.robot_class import Robot
+from utils.robot_class import Robot, Link
 from utils.util import check_input_dimensions
 from asmr.kinematics import get_jacobian
+from typing import Optional, Dict
 
 
-def forward_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, tau: np.ndarray, F_ext: np.ndarray = None) -> np.ndarray:
+def forward_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, tau: np.ndarray, F_ext: Optional[np.ndarray] = None) -> np.ndarray:
     """
     Forward dynamics using Featherstone's Articulated Body Algorithm
 
@@ -116,6 +117,8 @@ def get_inverse_dynamics(robot: Robot,
                          gravity: Optional[np.ndarray] = None) -> np.ndarray:
     """
     Compute the inverse dynamics of the robot at given joint positions, velocities, and accelerations through recursive Newton-Euler algorithm
+    
+    Refactored to use Recursion to guarantee topological order (Parents computed before Children).
 
     Args:
         robot (Robot): Robot object
@@ -141,113 +144,112 @@ def get_inverse_dynamics(robot: Robot,
     dv_0 = -gravity
     dw_0 = np.zeros(3)
     
-    link_velocities = {} # {link_name: (v, w)}
-    link_accelerations = {} # {link_name: (dv, dw)}
-    link_forces = {} # {link_name: (F, M)}
-
-    # =========== Forward Pass ===========
-    for link in robot.links:
-        parent = link.parent
-
-        if parent is None:  # Root
-            v_parent = v_0
-            w_parent = w_0
-            dv_parent = dv_0
-            dw_parent = dw_0
-
-        else:
-            v_parent, w_parent = link_velocities[parent.name]
-            dv_parent, dw_parent = link_accelerations[parent.name]
-
-    # Transform from parent -> current link
-    T_parent_child = link.T_origin_inv
-    R = T_parent_child[:3, :3]
-    p = link.T_origin[:3, 3] # need translation in parent frame for cross product!
-
-    v_parent_child = R @ (v_parent + np.cross(w_parent, p))
-    w_parent_child = R @ w_parent
-
-    # Joint motion
-    for joint in link.joints:
-        joint_index = robot.joints.index(joint)
-        q_i = q[joint_index]
-        qd_i = qd[joint_index]
-        qdd_i = qdd[joint_index]
-
-        if joint.type == 'hinge':
-            z_axis = joint.axis / np.linalg.norm(joint.axis)
-            w_parent_child += z_axis * qd_i
-            dw_parent_child += z_axis * qdd_i + np.cross(w_parent_child, z_axis * qd_i) # Acceleration + Coriolis
-            v_parent_child += np.cross(w_parent_child, joint.T_origin[:3, 3])
-            dv_parent_child += np.cross(dw_parent_child, joint.T_origin[:3, 3]) \
-                            + np.cross(w_parent_child, np.cross(w_parent_child, joint.T_origin[:3, 3])) # Tangential + Centrepetal
-        elif joint.type == 'slide':
-            z_axis = joint.axis / np.linalg.norm(joint.axis)
-            v_parent_child += z_axis * qd_i
-            dv_parent_child += z_axis * qdd_i + np.cross(w_parent_child, z_axis * qd_i)
-
-    # Inertial Forces
-    dv_com = dv_parent_child + np.cross(dw_parent_child, link.com) \
-            + np.cross(w_parent_child, np.cross(w_parent_child, link.com))
-    
-    F_inertial = link.mass * dv_com
-    M_inertial = link.inertia @ dw_parent_child + np.cross(w_parent_child, link.inertia @ w_parent_child)
-
-    # Store
-    link_velocities[link.name] = (v_parent_child, w_parent_child)
-    link_accelerations[link.name] = (dv_parent_child, dw_parent_child)
-    link_forces[link.name] = (F_inertial, M_inertial)
-
-    # =========== Backward Pass ===========
-    f_ext = {}  # Forces from child links
-    m_ext = {}  # Moments from child links
     tau = np.zeros(len(robot.joints))
 
-    # Iterate in reverse order
-    for link in reversed(robot.links):
+    def _recursive_rnea(link: Link, v_parent, w_parent, dv_parent, dw_parent):
+        """
+        Recursive RNEA:
+        1. Forward Pass (Pre-order): Compute v, w, dv, dw from parent
+        2. Backward Pass (Post-order): Compute f, m from children and project to joints
+        Returns: (f_link, m_link) - The total wrench this link exerts on its parent (in Link Frame)
+        """
+        
+        # --- 1. Forward Kinematics (Parent -> Current) ---
+        if link == robot.root:
+            v_curr, w_curr = v_parent, w_parent
+            dv_curr, dw_curr = dv_parent, dw_parent
+            
+        else:
+            # Transform from parent -> current link
+            T_parent_child = link.T_origin_inv
+            R = T_parent_child[:3, :3]
+            p = link.T_origin[:3, 3] # Translation in Parent Frame
 
-        # Inertial forces
-        F_i, N_i = link_forces[link.name]
+            # Propagate velocity through rigid body transform
+            v_curr = R @ (v_parent + np.cross(w_parent, p))
+            w_curr = R @ w_parent
+            
+            # Propagate acceleration
+            term1 = np.cross(dw_parent, p)
+            term2 = np.cross(w_parent, np.cross(w_parent, p))
+            dv_curr = R @ (dv_parent + term1 + term2)
+            dw_curr = R @ dw_parent
 
-        # External forces
+            # Apply Joint Motion (Iterate through all joints connecting Parent -> Child)
+            for joint in link.joints:
+                joint_index = robot.joints.index(joint)
+                q_i = q[joint_index]
+                qd_i = qd[joint_index]
+                qdd_i = qdd[joint_index]
+
+                if joint.type == 'hinge':
+                    z_axis = joint.axis / np.linalg.norm(joint.axis)
+                    
+                    # Update velocities
+                    w_prev = w_curr.copy() 
+                    w_curr += z_axis * qd_i
+                    v_curr += np.cross(w_curr, joint.T_origin[:3, 3]) 
+                    
+                    # Update accelerations
+                    dw_curr += z_axis * qdd_i + np.cross(w_prev, z_axis * qd_i) # Alpha + Coriolis
+                    
+                    # Acceleration terms from joint offset
+                    p_joint = joint.T_origin[:3, 3] 
+                    dv_curr += np.cross(dw_curr, p_joint) + np.cross(w_curr, np.cross(w_curr, p_joint)) # Tangential + Centrifugal
+
+                elif joint.type == 'slide':
+                    z_axis = joint.axis / np.linalg.norm(joint.axis)
+                    v_curr += z_axis * qd_i
+                    # Coriolis: 2 * cross(w, v_rel)
+                    dv_curr += z_axis * qdd_i + 2 * np.cross(w_curr, z_axis * qd_i)
+
+        # --- 2. Compute Forces (Inertial + External) ---
+        
+        # Inertial Forces (F = ma)
+        dv_com = dv_curr + np.cross(dw_curr, link.com) + np.cross(w_curr, np.cross(w_curr, link.com))
+        
+        F_inertial = link.mass * dv_com
+        M_inertial = link.inertia @ dw_curr + np.cross(w_curr, link.inertia @ w_curr)
+        
+        f_total = F_inertial.copy()
+        m_total = M_inertial.copy() + np.cross(link.com, F_inertial)
+        
+        # External Forces
         if external_forces is not None and link.name in external_forces:
-            F_ext = external_forces[link.name]
-            F_i += F_ext[:3]
-            N_i += F_ext[3:]
+            F_ext_user = external_forces[link.name]
+            # Assuming F_ext is a LOAD (Force exerted BY robot ON env), we ADD it to required torque.
+            f_total += F_ext_user[:3]
+            m_total += F_ext_user[3:]
 
-        # forces from children
-        f_total = F_i.copy()
-        m_total = N_i.copy() + np.cross(link.com, F_i) # Moment about link origin
-
+        # --- 3. Recurse to Children (Backward Pass Accumulation) ---
         for child in link.children:
-            # Transform child wrench to current link frame
-            T_child_parent = child.T_origin
-            R_child_parent = T_child_parent[:3, :3]
-            p_child_parent = T_child_parent[:3, 3]
+            f_child, m_child = _recursive_rnea(child, v_curr, w_curr, dv_curr, dw_curr)
+            
+            # Transform Child Wrench -> Current Frame
+            T_child_curr = child.T_origin
+            R_child_curr = T_child_curr[:3, :3]
+            p_child_curr = T_child_curr[:3, 3] # Position of Child in Current
+            
+            f_child_curr = R_child_curr @ f_child
+            m_child_curr = R_child_curr @ m_child + np.cross(p_child_curr, f_child_curr)
+            
+            f_total += f_child_curr
+            m_total += m_child_curr
 
-            f_child_parent = R_child_parent @ f_ext[child.name]
-            m_child_parent = R_child_parent @ m_ext[child.name] + np.cross(p_child_parent, f_child_parent)
+        # --- 4. Project to Joint Torques ---
+        if link != robot.root:
+            for joint in link.joints:
+                idx = robot.joints.index(joint)
+                if joint.type == 'hinge':
+                    z_axis = joint.axis / np.linalg.norm(joint.axis)
+                    tau[idx] = np.dot(m_total, z_axis)
+                elif joint.type == 'slide':
+                    z_axis = joint.axis / np.linalg.norm(joint.axis)
+                    tau[idx] = np.dot(f_total, z_axis)
 
-            f_total += f_child_parent
-            m_total += m_child_parent
+        return f_total, m_total
 
-        # Project to joint space
-        for joint in link.joints:
-            joint_index = robot.joints.index(joint)
-
-            if joint.type == 'hinge':
-                z_axis = joint.axis / np.linalg.norm(joint.axis)
-                tau_i = z_axis @ m_total
-                # Store torque
-                tau[joint_index] = tau_i
-            elif joint.type == 'slide':
-                z_axis = joint.axis / np.linalg.norm(joint.axis)
-                tau_i = z_axis @ f_total
-                # Store force
-                tau[joint_index] = tau_i
-
-        # Store for parent
-        f_ext[link.name] = f_total
-        m_ext[link.name] = m_total
-
-    return tau # Done
+    # Start overall recursion
+    _recursive_rnea(robot.root, v_0, w_0, dv_0, dw_0)
+    
+    return tau

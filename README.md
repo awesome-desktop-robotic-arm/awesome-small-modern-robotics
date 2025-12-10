@@ -21,5 +21,5 @@ A utility collection for robotics development
     - [ ] [Dynamics module](asmr/dynamics.py)
         Stateless dynamics functions that relies on `Robot` class
         - [x] ID
-        - [ ] FD
+        - [x] FD
             - [ ] FD with Featherstone's ADA
