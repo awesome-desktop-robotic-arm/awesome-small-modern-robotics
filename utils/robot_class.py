@@ -13,8 +13,8 @@ class Link:
     mass: float
     com: np.ndarray # Center of Mass (3-vector)
     inertia: np.ndarray # 3x3 inertia matrix
-    T_origin: np.ndarray # 4x4 transformation matrix
-    T_origin_inv: Optional[np.ndarray] = None
+    T_origin: np.ndarray # 4x4 transformation matrix: transform from parent link frame to this link frame
+    T_origin_inv: Optional[np.ndarray] = None # Precomputed inverse of T_origin: transform from this link to parent frame
     # Tree structure
     parent: Optional["Link"] = None # String syntax for forward definition
     children: List["Link"] = dataclasses.field(default_factory=list)

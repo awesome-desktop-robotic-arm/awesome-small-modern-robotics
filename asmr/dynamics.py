@@ -11,7 +11,7 @@ from utils.robot_class import Robot, Link
 from utils.util import check_input_dimensions
 from utils.geometry import axis_angle_to_mat
 from asmr.kinematics import get_jacobian
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
 
 
@@ -148,7 +148,7 @@ def get_inverse_dynamics(robot: Robot,
     
     tau = np.zeros(len(robot.joints))
 
-    def _recursive_rnea(link: Link, v_parent, w_parent, dv_parent, dw_parent):
+    def _recursive_rnea(link: Link, v_parent, w_parent, dv_parent, dw_parent) -> Tuple[np.ndarray, np.ndarray]:
         """
         Recursive RNEA:
         1. Forward Pass (Pre-order): Compute v, w, dv, dw from parent
@@ -162,20 +162,19 @@ def get_inverse_dynamics(robot: Robot,
             dv_curr, dw_curr = dv_parent, dw_parent
             
         else:
-            # Transform from parent -> current link
-            T_parent_child = link.T_origin_inv
-            R = T_parent_child[:3, :3]
-            p = link.T_origin[:3, 3] # Translation in Parent Frame
+            # Get Transform that map vectors from Parent Frame -> Current Frame
+            R_child_parent = link.T_origin_inv[:3, :3] # Child from parent: 
+            p_parent = link.T_origin[:3, 3] # Translation from parent origin to child origin, parent frame
 
             # Propagate velocity through rigid body transform
-            v_curr = R @ (v_parent + np.cross(w_parent, p))
-            w_curr = R @ w_parent
+            v_curr = R_child_parent @ (v_parent + np.cross(w_parent, p_parent)) # v from parent in child frame; tangential term + centripetal term
+            w_curr = R_child_parent @ w_parent # w from parent in child frame
             
             # Propagate acceleration
-            term1 = np.cross(dw_parent, p)
-            term2 = np.cross(w_parent, np.cross(w_parent, p))
-            dv_curr = R @ (dv_parent + term1 + term2)
-            dw_curr = R @ dw_parent
+            term1 = np.cross(dw_parent, p_parent) # Angular acceleration cross position
+            term2 = np.cross(w_parent, np.cross(w_parent, p_parent)) # Centripetal acceleration
+            dv_curr = R_child_parent @ (dv_parent + term1 + term2)
+            dw_curr = R_child_parent @ dw_parent
 
             # Store rotations for backward pass
             joint_rotations = []
