@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 
 from utils.geometry import axis_angle_to_mat, make_T, mat_to_axis_angle
 from utils.robot_class import Robot, Link, Joint
-from utils.util import timer
+from utils.util import check_input_dimensions
         
 def get_forward_kinematics(robot: Robot, q: List[float]) -> Dict[str, np.ndarray]:
     """
@@ -21,8 +21,8 @@ def get_forward_kinematics(robot: Robot, q: List[float]) -> Dict[str, np.ndarray
     Returns:
         Dict[str, np.ndarray]: Dictionary of link names and their forward kinematics (T_link_world)
     """
-    if len(q) != len(robot.joints):
-        raise ValueError(f"Number of joint angles ({len(q)}) must match number of joints ({len(robot.joints)})")
+    # Check input dimensions
+    check_input_dimensions(robot, q)
 
     result: Dict[str, np.ndarray] = {}
     
@@ -100,14 +100,13 @@ def get_jacobian(robot: Robot, link_name: str, q: Optional[List[float]] = None) 
         - J_angular = z
     """
     # 1. Resolve joint angles
-    if q is None:
+    if q is not None:
+        check_input_dimensions(robot, q)
+    else:
         if robot.joint_states is None:
             raise ValueError("Joint angles not provided and no current configuration set in robot.")
         q = robot.joint_states
         
-    if len(q) != len(robot.joints):
-        raise ValueError(f"Number of joint angles ({len(q)}) must match number of joints ({len(robot.joints)})")
-
     # 2. Find link and build chain from root
     target_link = robot.link_map.get(link_name)
     if target_link is None:
@@ -245,6 +244,7 @@ def get_inverse_kinematics(robot: Robot,
     returns:
         q: List of joint angles that achieve the target transform.
     """
+
     
     # Ensure link_name is in robot
     target_link = robot.link_map.get(link_name)
@@ -252,7 +252,9 @@ def get_inverse_kinematics(robot: Robot,
         raise ValueError(f"Link {link_name} not found in robot.")
 
     # Check if q_init is valid or provided. If not, use current joint angles.
-    if q_init is None:
+    if q_init is not None:
+        check_input_dimensions(robot, q_init)
+    else:
         if robot.joint_states is None:
             raise ValueError("No joint states provided and no current joint configuration found in robot.")
         q_init = robot.joint_states

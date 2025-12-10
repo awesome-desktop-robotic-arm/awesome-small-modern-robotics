@@ -9,7 +9,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.model_loader import load_robot
 from asmr.kinematics import get_forward_kinematics, get_inverse_kinematics
 from utils.geometry import make_T, axis_angle_to_mat
+from utils.util import timer
 
+@timer
 def test_ik_convergence():
     print("\n--- Testing IK Convergence ---")
     

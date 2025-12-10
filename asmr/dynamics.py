@@ -8,7 +8,8 @@ Inverse dynamics: recursive Newton-Euler algorithm
 
 import numpy as np
 from utils.robot_class import Robot
-from asmr.kinematics import get_forward_kinematics, get_jacobian
+from utils.util import check_input_dimensions
+from asmr.kinematics import get_jacobian
 
 
 def forward_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, tau: np.ndarray, F_ext: np.ndarray = None) -> np.ndarray:
@@ -27,7 +28,7 @@ def forward_dynamics(robot: Robot, q: np.ndarray, qd: np.ndarray, tau: np.ndarra
         np.ndarray: Joint accelerations (n,)
     """
     # Check input dimensions
-    # check_input_dimensions(robot, q, qd, tau)
+    check_input_dimensions(robot, q, qd, tau)
 
     if F_ext is None:
         tau_ext = np.zeros_like(robot.joint_states)
@@ -56,7 +57,7 @@ def get_mass_matrix(robot: Robot, q: np.ndarray) -> np.ndarray:
         np.ndarray: Mass matrix (n, n)
     """
     # Check input dimensions
-    # check_input_dimensions(robot, q)
+    check_input_dimensions(robot, q)
 
     M = np.zeros((len(q), len(q)))
     qd = np.zeros_like(q)
@@ -83,7 +84,7 @@ def get_bias_forces(robot: Robot, q: np.ndarray, qd: np.ndarray) -> np.ndarray:
         np.ndarray: Bias forces (n,)
     """
     # Check input dimensions
-    # check_input_dimensions(robot, q, qd)
+    check_input_dimensions(robot, q, qd)
 
     tau = get_inverse_dynamics(robot=robot, q=q, qd=qd, qdd=np.zeros_like(qd))
     tau += get_joint_friction(robot=robot, q=q, qd=qd)
@@ -128,7 +129,7 @@ def get_inverse_dynamics(robot: Robot,
         np.ndarray: Joint torques (n,)
     """
     # Check input dimensions
-    check_input_dimensions(robot, q, qd, qdd)/
+    check_input_dimensions(robot, q, qd, qdd)
 
     # Gravity
     if gravity is None:
