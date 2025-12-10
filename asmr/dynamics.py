@@ -106,7 +106,7 @@ def get_joint_friction(robot: Robot, q: np.ndarray, qd: np.ndarray) -> np.ndarra
         np.ndarray: Joint friction forces (n,)
     """
     # TODO: Implement this later.
-    pass
+    return np.zeros_like(q)
 
 
 def get_inverse_dynamics(robot: Robot, 
@@ -240,6 +240,11 @@ def get_inverse_dynamics(robot: Robot,
         if link != robot.root:
             for joint in link.joints:
                 idx = robot.joints.index(joint)
+
+                # Shift moment to joint frame
+                p_joint = joint.T_origin[:3, 3] # Usually zero :)
+                m_total -= np.cross(p_joint, f_total)
+                
                 if joint.type == 'hinge':
                     z_axis = joint.axis / np.linalg.norm(joint.axis)
                     tau[idx] = np.dot(m_total, z_axis)
