@@ -13,7 +13,7 @@ class Link:
     mass: float
     com: np.ndarray # Center of Mass (3-vector)
     inertia: np.ndarray # 3x3 inertia matrix
-    origin: np.ndarray # 4x4 transformation matrix
+    T_origin: np.ndarray # 4x4 transformation matrix
     # Tree structure
     parent: Optional["Link"] = None # String syntax for forward definition
     children: List["Link"] = dataclasses.field(default_factory=list)
@@ -25,7 +25,7 @@ class Link:
             raise ValueError("Mass must be non-negative")
         if self.inertia.shape != (3, 3):
             raise ValueError("Inertia must be a 3x3 matrix")
-        if self.origin.shape != (4, 4):
+        if self.T_origin.shape != (4, 4):
             raise ValueError("Origin must be a 4x4 matrix")
         if self.com.shape != (3,):
             raise ValueError("COM must be a 3-vector")

@@ -42,7 +42,7 @@ class Visualizer:
             
             # Global Transform of this link
             # T_world = T_parent_world * T_local
-            T_local = link.origin
+            T_local = link.T_origin
             T_world = T_parent_world @ T_local
             
             # Draw Link (Line from Parent Origin to Current Origin)

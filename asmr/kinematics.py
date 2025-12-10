@@ -27,8 +27,8 @@ def get_forward_kinematics(robot: Robot, q: List[float]) -> Dict[str, np.ndarray
     result: Dict[str, np.ndarray] = {}
     
     # Start recursion from root
-    # We assume root.origin is its transform in world (usually identity for "world" link)
-    _fk_recursive(robot, robot.root, robot.root.origin, q, result)
+    # We assume root.T_origin is its transform in world (usually identity for "world" link)
+    _fk_recursive(robot, robot.root, robot.root.T_origin, q, result)
     
     return result
 
@@ -53,7 +53,7 @@ def _fk_recursive(robot: Robot,
     for child in link_current.children:
         
         # 1. Get Static transform from parent (current) to child (before joint motion)
-        T_child_static = child.origin
+        T_child_static = child.T_origin
         
         # 2. Compute Joint transforms which happen in the child frame
         T_joint_total = np.eye(4)
@@ -123,7 +123,7 @@ def get_jacobian(robot: Robot, link_name: str, q: Optional[List[float]] = None) 
     # 3. Forward pass to compute joint axes and end-effector position
     # We need to traverse the chain and accumulate transforms
     
-    T_cum = robot.root.origin.copy() # Start at root origin
+    T_cum = robot.root.T_origin.copy() # Start at root origin
     
     # Store joint info: (index, z_axis_world, p_origin_world, type)
     joint_info: List[Tuple[int, np.ndarray, np.ndarray, str]] = []
@@ -151,7 +151,7 @@ def get_jacobian(robot: Robot, link_name: str, q: Optional[List[float]] = None) 
         child = chain[i]
         
         # 1. Static transform form parent to child
-        T_static = child.origin
+        T_static = child.T_origin
         T_curr = T_link_world @ T_static 
         
         # 2. Process joints for this child

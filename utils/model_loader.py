@@ -33,7 +33,7 @@ class MJCFParser:
             raise ValueError("No worldbody found in MJCF file.")
 
         # Add worldbody as a link
-        world_link = Link(name="world", mass=0.0, com=np.zeros(3), inertia=np.zeros((3,3)), origin=np.eye(4))
+        world_link = Link(name="world", mass=0.0, com=np.zeros(3), inertia=np.zeros((3,3)), T_origin=np.eye(4))
         self.links.append(world_link)
         # Note that world root will have no joints. 
         # This design is made to accommodate many robots in the same worldbody -> e.g. aloha
@@ -115,7 +115,7 @@ class MJCFParser:
             mass=mass, 
             com=com, 
             inertia=inertia_mat,
-            origin=T_link,
+            T_origin=T_link,
             parent=parent_link
         )
         self.links.append(new_link)
