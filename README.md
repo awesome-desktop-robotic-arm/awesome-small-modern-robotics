@@ -24,3 +24,6 @@ A utility collection for robotics development
             - this is currently pure rigid body rNEA and does not include friction and armature effects (TODO)
         - [~~x~~] FD
             - [ ] FD with Featherstone's ADA
+
+>[!NOTE]
+> This repo primarily relies on MJCF for robot descriptions. For a collection of up-to-date MJCF models, check [here](https://github.com/google-deepmind/mujoco_menagerie)
