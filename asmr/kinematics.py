@@ -77,9 +77,13 @@ def _fk_recursive(robot: Robot,
                 T_motion = np.eye(4)
                 
             # Transform is: Move to Joint Frame -> Apply Motion -> Move back
-            T_joint_local = T_j_origin @ T_motion @ T_j_origin_inv
+            # T_j_origin_inv is essentially T_link_to_joint
+            # T_motion = joint motion
+            # T_j_origin is essentially T_joint_to_link
+            # T_joint_local = Joint motion expressed in link frame
+            T_joint_local = T_j_origin @ T_motion @ T_j_origin_inv 
             
-            # Compose joint transforms (ordering matters: inner to outer or vice versa? 
+            # Compose joint transforms in case there's multiple joints stacked.
             # MJCF applies them sequentially. If multiple joints, usually it's J1 @ J2...)
             T_joint_total = T_joint_total @ T_joint_local
         
